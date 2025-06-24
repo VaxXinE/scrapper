@@ -1,0 +1,1357 @@
+{
+  "status": "success",
+  "updatedAt": "2025-06-24T05:03:56.302Z",
+  "total": 135,
+  "data": [
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "00.15",
+      "impact": null,
+      "event": "★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": null,
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "",
+      "impact": null,
+      "event": null,
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-30",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-15",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-18",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-07",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "06.00",
+      "impact": null,
+      "event": "★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": null,
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "51.0",
+      "impact": null,
+      "event": "51.0",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "51.7",
+      "impact": null,
+      "event": "51.7",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "52.1",
+      "impact": null,
+      "event": "51.7",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "50.4",
+      "impact": null,
+      "event": "52.6",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-01-24",
+      "currency": "47.8",
+      "impact": null,
+      "event": "49.8",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "06.00",
+      "impact": null,
+      "event": "★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": null,
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "50.6",
+      "impact": null,
+      "event": "51.3",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "51.0",
+      "impact": null,
+      "event": "50.5",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "51.6",
+      "impact": null,
+      "event": "51.4",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "50.8",
+      "impact": null,
+      "event": "51.2",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "51.2",
+      "impact": null,
+      "event": "51.4",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "07.30",
+      "impact": null,
+      "event": "★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": "49.5",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "49.4",
+      "impact": null,
+      "event": "50.4",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "48.7",
+      "impact": null,
+      "event": "49.0",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "48.4",
+      "impact": null,
+      "event": "48.5",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "49.0",
+      "impact": null,
+      "event": "48.3",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "48.7",
+      "impact": null,
+      "event": "48.9",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "14.15",
+      "impact": null,
+      "event": "★★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": "49.8",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "49.8",
+      "impact": null,
+      "event": "47.8",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "48.7",
+      "impact": null,
+      "event": "49.5",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "48.5",
+      "impact": null,
+      "event": "48.2",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "45.8",
+      "impact": null,
+      "event": "48.9",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "45.0",
+      "impact": null,
+      "event": "45.5",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "14.15",
+      "impact": null,
+      "event": "★★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": "50.0",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "48.9",
+      "impact": null,
+      "event": "48.7",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "47.3",
+      "impact": null,
+      "event": "47.4",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "47.9",
+      "impact": null,
+      "event": "46.8",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "45.3",
+      "impact": null,
+      "event": "46.6",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "48.2",
+      "impact": null,
+      "event": "44.5",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "14.30",
+      "impact": null,
+      "event": "★★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": "48.9",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "48.3",
+      "impact": null,
+      "event": "49.0",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "48.4",
+      "impact": null,
+      "event": "48.8",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "48.3",
+      "impact": null,
+      "event": "48.0",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "46.5",
+      "impact": null,
+      "event": "48.3",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "45.0",
+      "impact": null,
+      "event": "46.1",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "14.30",
+      "impact": null,
+      "event": "★★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": "47.8",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "47.1",
+      "impact": null,
+      "event": "49.4",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "49.0",
+      "impact": null,
+      "event": "47.2",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "50.9",
+      "impact": null,
+      "event": "48.8",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "51.1",
+      "impact": null,
+      "event": "50.2",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "52.5",
+      "impact": null,
+      "event": "52.2",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "15.00",
+      "impact": null,
+      "event": "★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": "49.6",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "49.4",
+      "impact": null,
+      "event": "49.4",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "49.0",
+      "impact": null,
+      "event": "49.4",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "48.6",
+      "impact": null,
+      "event": "48.7",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "47.6",
+      "impact": null,
+      "event": "48.7",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "46.6",
+      "impact": null,
+      "event": "47.3",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "15.30",
+      "impact": null,
+      "event": "★★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": "46.9",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "46.4",
+      "impact": null,
+      "event": "47.7",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "45.4",
+      "impact": null,
+      "event": "45.1",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "44.9",
+      "impact": null,
+      "event": "44.0",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "46.9",
+      "impact": null,
+      "event": "44.6",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "48.3",
+      "impact": null,
+      "event": "46.4",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "15.30",
+      "impact": null,
+      "event": "★★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": "51.2",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "50.9",
+      "impact": null,
+      "event": "51.3",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "49.0",
+      "impact": null,
+      "event": "50.2",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "52.5",
+      "impact": null,
+      "event": "48.9",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "51.0",
+      "impact": null,
+      "event": "53.2",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "50.8",
+      "impact": null,
+      "event": "51.1",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "20.45",
+      "impact": null,
+      "event": "★★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": "51.1",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "52.0",
+      "impact": null,
+      "event": "52.0",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "50.2",
+      "impact": null,
+      "event": "52.3",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "50.2",
+      "impact": null,
+      "event": "50.7",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "52.7",
+      "impact": null,
+      "event": "49.8",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "51.2",
+      "impact": null,
+      "event": "51.6",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "20.45",
+      "impact": null,
+      "event": "★★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": "52.9",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "53.7",
+      "impact": null,
+      "event": "53.1",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "50.8",
+      "impact": null,
+      "event": "52.3",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-23",
+      "currency": "54.4",
+      "impact": null,
+      "event": "51.4",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-24",
+      "currency": "51.0",
+      "impact": null,
+      "event": "54.3",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "52.9",
+      "impact": null,
+      "event": "49.7",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "23-06-2025",
+      "currency": "21.00",
+      "impact": null,
+      "event": "★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-23",
+      "impact": null,
+      "event": "3.96M",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-23",
+      "currency": "4.00M",
+      "impact": null,
+      "event": "4.03M",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "4.02M",
+      "impact": null,
+      "event": "4.00M",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-24",
+      "currency": "4.27M",
+      "impact": null,
+      "event": "4.02M",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-20",
+      "currency": "4.08M",
+      "impact": null,
+      "event": "4.26M",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-21",
+      "currency": "4.29M",
+      "impact": null,
+      "event": "4.08M",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "24-06-2025",
+      "currency": "00.10",
+      "impact": null,
+      "event": "★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-24",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-24",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "24-06-2025",
+      "currency": "01.30",
+      "impact": null,
+      "event": "★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-24",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-24",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-24",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-09",
+      "currency": "",
+      "impact": null,
+      "event": null,
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-09",
+      "currency": "",
+      "impact": null,
+      "event": null,
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-25",
+      "currency": "",
+      "impact": null,
+      "event": null,
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "24-06-2025",
+      "currency": "12.00",
+      "impact": null,
+      "event": "★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-24",
+      "impact": null,
+      "event": "2.5%",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-24",
+      "currency": "2.4%",
+      "impact": null,
+      "event": null,
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-27",
+      "currency": "2.2%",
+      "impact": null,
+      "event": "2.4%",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-22",
+      "currency": "2.2%",
+      "impact": null,
+      "event": "2.2%",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-25",
+      "currency": "2.2%",
+      "impact": null,
+      "event": "2.2%",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-26",
+      "currency": "1.9%",
+      "impact": null,
+      "event": "2.2%",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "24-06-2025",
+      "currency": "15.00",
+      "impact": null,
+      "event": "★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-24",
+      "impact": null,
+      "event": "88.1",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-24",
+      "currency": "87.5",
+      "impact": null,
+      "event": null,
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-22",
+      "currency": "86.9",
+      "impact": null,
+      "event": "87.5",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-24",
+      "currency": "86.7",
+      "impact": null,
+      "event": "86.9",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-03-25",
+      "currency": "85.2",
+      "impact": null,
+      "event": "86.7",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-02-24",
+      "currency": "85.2",
+      "impact": null,
+      "event": "85.2",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "24-06-2025",
+      "currency": "15.00",
+      "impact": null,
+      "event": "★★★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-24",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-24",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-24",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-13",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-05-09",
+      "currency": "",
+      "impact": null,
+      "event": null,
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-04-24",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "24-06-2025",
+      "currency": "16.30",
+      "impact": null,
+      "event": "★",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "",
+      "currency": "2025-06-24",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2025-06-24",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2024-12-05",
+      "currency": "",
+      "impact": null,
+      "event": null,
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2024-11-19",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    },
+    {
+      "date": null,
+      "time": "2024-10-22",
+      "currency": "-",
+      "impact": null,
+      "event": "-",
+      "previous": null,
+      "forecast": null,
+      "actual": null
+    }
+  ]
+}
