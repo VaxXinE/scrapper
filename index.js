@@ -2,6 +2,13 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer');
+
+const browser = await puppeteer.launch({
+  headless: true,
+  args: ['--no-sandbox', '--disable-setuid-sandbox'],
+});
+
 
 const app = express();
 const PORT = 3000;
