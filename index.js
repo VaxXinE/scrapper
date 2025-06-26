@@ -1,14 +1,8 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
 const puppeteer = require('puppeteer');
-const puppeteer = require('puppeteer');
-
-const browser = await puppeteer.launch({
-  headless: true,
-  args: ['--no-sandbox', '--disable-setuid-sandbox'],
-});
-
+const axios = require('axios');
+const cheerio = require('cheerio');
 
 const app = express();
 const PORT = 3000;
@@ -17,8 +11,10 @@ app.use(cors());
 
 let cachedNews = [];
 let cachedCalendar = [];
+let cachedPivotTables = {};
 let lastUpdatedNews = null;
 let lastUpdatedCalendar = null;
+let lastUpdatedPivot = null;
 
 const newsCategories = [
   'economic-news/all-economic-news',
@@ -30,10 +26,27 @@ const newsCategories = [
   'analysis/analysis-opinion',
 ];
 
-const axios = require('axios');
-const cheerio = require('cheerio');
+// =========================
+// Fetch detail news
+// =========================
+async function fetchNewsDetail(url) {
+  try {
+    const { data } = await axios.get(url);
+    const $ = cheerio.load(data);
+    const articleDiv = $('div.article-content').clone();
+    articleDiv.find('span, h3').remove(); // hapus span dengan tanggal + share
+    const plainText = articleDiv.text().trim();
+    return { text: plainText };
+  } catch (err) {
+    console.error(`Failed to fetch detail from ${url}:`, err.message);
+    return { text: null };
+  }
+}
 
 
+// =========================
+// Scrape News (without p-limit)
+// =========================
 async function scrapeNews() {
   console.log('Scraping news...');
   const pageLimit = 10;
@@ -45,11 +58,13 @@ async function scrapeNews() {
         const offset = i * 10;
         const url = `https://www.newsmaker.id/index.php/en/${cat}?start=${offset}`;
         const { data } = await axios.get(url, {
-          timeout: 120000,
+          timeout: 60000,
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
 
         const $ = cheerio.load(data);
+        const newsItems = [];
+
         $('div.single-news-item').each((_, el) => {
           const title = $(el).find('h5.card-title a').text().trim();
           const link = 'https://www.newsmaker.id' + $(el).find('h5.card-title a').attr('href');
@@ -61,17 +76,19 @@ async function scrapeNews() {
 
           $(el).find('p.card-text').each((_, p) => {
             const text = $(p).text().trim();
-            if (/\d{1,2} \w+ \d{4}/.test(text)) {
-              date = text;
-            } else {
-              summary = text;
-            }
+            if (/\d{1,2} \w+ \d{4}/.test(text)) date = text;
+            else summary = text;
           });
 
           if (title && link && summary) {
-            results.push({ title, link, image, category, date, summary });
+            newsItems.push({ title, link, image, category, date, summary });
           }
         });
+
+        for (const item of newsItems) {
+          const detail = await fetchNewsDetail(item.link);
+          results.push({ ...item, detail });
+        }
       }
     }
 
@@ -90,6 +107,9 @@ async function scrapeNews() {
   }
 }
 
+// =========================
+// Scrape Calendar
+// =========================
 async function scrapeCalendar() {
   console.log('Scraping calendar with Puppeteer...');
   let browser;
@@ -161,29 +181,137 @@ async function scrapeCalendar() {
   }
 }
 
+// =========================
+// Scrape Pivot Table
+// =========================
+async function scrapePivotTables() {
+  console.log('Scraping pivot tables...');
+  const url = 'https://www.newsmaker.id/index.php/id/pivot-fibonacci-2?cid=107';
 
+  try {
+    const { data } = await axios.get(url);
+    const $ = cheerio.load(data);
+    const dropdownOptions = [];
+    const tableMap = {};
+
+    $('#currencies option').each((_, el) => {
+      const value = $(el).attr('value');
+      const label = $(el).text().trim();
+      if (value && label) dropdownOptions.push({ value, label });
+    });
+
+    $('.table-bordered').each((i, table) => {
+      const rows = [];
+      $(table).find('tbody tr').each((_, tr) => {
+        const tds = $(tr).find('td');
+        if (tds.length === 5) {
+          rows.push({
+            date: $(tds[0]).text().trim(),
+            open: $(tds[1]).text().trim(),
+            high: $(tds[2]).text().trim(),
+            low: $(tds[3]).text().trim(),
+            close: $(tds[4]).text().trim(),
+          });
+        }
+      });
+      const label = dropdownOptions[i]?.label || `Data-${i}`;
+      tableMap[label] = rows;
+    });
+
+    cachedPivotTables = {
+      updatedAt: new Date(),
+      dropdowns: dropdownOptions,
+      tables: tableMap,
+    };
+
+    lastUpdatedPivot = new Date();
+    console.log('✅ Pivot table updated');
+  } catch (err) {
+    console.error('❌ Pivot table scraping failed:', err.message);
+  }
+}
+
+// =========================
+// Scrape Live Quotes
+// =========================
+
+async function scrapeQuotes() {
+  console.log('Scraping quotes from JSON endpoint...');
+  const url = 'https://www.newsmaker.id/quotes/live?s=LGD+LSI+GHSIM5+LCOPU5+SN1U5+DJIA+DAX+DX+AUDUSD+EURUSD+GBPUSD+CHF+JPY+RP';
+  try {
+    const { data } = await axios.get(url);
+    const quotes = [];
+    for (let i = 1; i <= data[0].count; i++) {
+      quotes.push({
+        symbol: data[i].symbol,
+        last: data[i].last,
+        high: data[i].high,
+        low: data[i].low,
+        open: data[i].open,
+        prevClose: data[i].prevClose,
+        valueChange: data[i].valueChange,
+        percentChange: data[i].percentChange
+      });
+    }
+    cachedQuotes = quotes;
+    lastUpdatedQuotes = new Date();
+    console.log(`✅ Quotes updated (${quotes.length} items)`);
+  } catch (err) {
+    console.error('❌ Quotes scraping failed:', err.message);
+  }
+}
+
+// =========================
+// Schedule scraper
+// =========================
 scrapeNews();
 scrapeCalendar();
+scrapePivotTables();
+scrapeQuotes();
 
 setInterval(scrapeNews, 30 * 60 * 1000);
 setInterval(scrapeCalendar, 30 * 60 * 1000);
+setInterval(scrapePivotTables, 30 * 60 * 1000);
+setInterval(scrapeQuotes, 0.15 * 60 * 1000);
 
-app.get('/api/all-news', (req, res) => {
-  res.json({
-    status: 'success',
-    updatedAt: lastUpdatedNews,
-    total: cachedNews.length,
-    data: cachedNews,
-  });
+// =========================
+// API Endpoints
+// =========================
+app.get('/api/news', (req, res) => {
+  const { category, search } = req.query;
+  let filtered = cachedNews;
+
+  if (category) {
+    filtered = filtered.filter(news => news.category.toLowerCase().includes(category.toLowerCase()));
+  }
+
+  if (search) {
+    const keyword = search.toLowerCase();
+    filtered = filtered.filter(news =>
+      news.title.toLowerCase().includes(keyword) ||
+      news.summary.toLowerCase().includes(keyword) ||
+      news.detail?.text?.toLowerCase().includes(keyword)
+    );
+  }
+
+  res.json({ status: 'success', updatedAt: lastUpdatedNews, total: filtered.length, data: filtered });
 });
 
 app.get('/api/calendar', (req, res) => {
+  res.json({ status: 'success', updatedAt: lastUpdatedCalendar, total: cachedCalendar.length, data: cachedCalendar });
+});
+
+app.get('/api/pivot', (req, res) => {
   res.json({
     status: 'success',
-    updatedAt: lastUpdatedCalendar,
-    total: cachedCalendar.length,
-    data: cachedCalendar,
+    updatedAt: lastUpdatedPivot,
+    dropdowns: cachedPivotTables.dropdowns || [],
+    tables: cachedPivotTables.tables || {},
   });
+});
+
+app.get('/api/quotes', (req, res) => {
+  res.json({ status: 'success', updatedAt: lastUpdatedQuotes, total: cachedQuotes.length, data: cachedQuotes });
 });
 
 app.listen(PORT, () => {
