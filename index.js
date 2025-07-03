@@ -51,7 +51,7 @@ async function fetchNewsDetail(url) {
 // =========================
 async function scrapeNews() {
   console.log('Scraping news...');
-  const pageLimit = 2;
+  const pageLimit = 5;
   const results = [];
 
   try {
