@@ -15,6 +15,8 @@ let cachedPivotTables = {};
 let lastUpdatedNews = null;
 let lastUpdatedCalendar = null;
 let lastUpdatedPivot = null;
+let cachedHistoricalData = [];
+let lastUpdatedHistorical = null;
 
 const newsCategories = [
   'economic-news/all-economic-news',
@@ -45,11 +47,11 @@ async function fetchNewsDetail(url) {
 
 
 // =========================
-// Scrape News (without p-limit)
+// Scrape News
 // =========================
 async function scrapeNews() {
   console.log('Scraping news...');
-  const pageLimit = 10;
+  const pageLimit = 2;
   const results = [];
 
   try {
@@ -266,16 +268,61 @@ async function scrapeQuotes() {
 }
 
 // =========================
+// Scrape historical data
+// ========================
+async function scrapeHistoricalData() {
+  console.log('Scraping historical data from Newsmaker...');
+  if (cachedHistoricalData.length > 0 && lastUpdatedHistorical && (new Date() - lastUpdatedHistorical) < 24 * 60 * 60 * 1000) {
+    console.log('Historical data is already up-to-date, skipping scrape.');
+  const pageSize = 8;
+  let start = 0;
+  let allData = [];
+
+  try {
+    while (true) {
+      start = start + 8;
+      const url = `https://www.newsmaker.id/index.php/id/historical-data-2?start=${start}`;
+      const { data } = await axios.get(url);
+      const $ = cheerio.load(data);
+      const rows = $('table.table tbody tr');
+
+      if (rows.length === 80) break;
+
+      rows.each((_, row) => {
+        const cols = $(row).find('td');
+        allData.push({
+          date: $(cols[0]).text().trim(),
+          open: parseFloat($(cols[1]).text().trim()),
+          high: parseFloat($(cols[2]).text().trim()),
+          low: parseFloat($(cols[3]).text().trim()),
+          close: parseFloat($(cols[4]).text().trim())
+        });
+      });
+
+      start += pageSize;
+    }
+
+    cachedHistoricalData = allData;
+    lastUpdatedHistorical = new Date();
+    console.log(`✅ Historical data updated (${allData.length} rows)`);
+
+  } catch (err) {
+    console.error('❌ Historical data scraping failed:', err.message);
+  }
+}
+}
+
+// =========================
 // Schedule scraper
 // =========================
 scrapeNews();
 scrapeCalendar();
-scrapePivotTables();
 scrapeQuotes();
+scrapeHistoricalData();
 
 setInterval(scrapeNews, 30 * 60 * 1000);
-setInterval(scrapeCalendar, 30 * 60 * 1000);
-setInterval(scrapePivotTables, 30 * 60 * 1000);
+setInterval(scrapeCalendar, 60 * 60 * 1000);
+setInterval(scrapeHistoricalData, 60 * 60 * 1000);
 setInterval(scrapeQuotes, 0.15 * 60 * 1000);
 
 // =========================
@@ -318,6 +365,18 @@ app.get('/api/quotes', (req, res) => {
   res.json({ status: 'success', updatedAt: lastUpdatedQuotes, total: cachedQuotes.length, data: cachedQuotes });
 });
 
+app.get('/api/historical-data', async (req, res) => {
+   res.json({
+    status: 'success',
+    lastUpdated: lastUpdatedHistorical,
+    count: cachedHistoricalData.length,
+    data: cachedHistoricalData
+  });
+});
+
+
 app.listen(PORT, () => {
   console.log(`🚀 Server ready at http://localhost:${PORT}`);
 });
+
+
