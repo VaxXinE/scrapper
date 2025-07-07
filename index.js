@@ -60,7 +60,7 @@ async function scrapeNews() {
         const offset = i * 10;
         const url = `https://www.newsmaker.id/index.php/en/${cat}?start=${offset}`;
         const { data } = await axios.get(url, {
-          timeout: 60000,
+          timeout: 120000,
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
 
