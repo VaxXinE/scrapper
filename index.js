@@ -215,55 +215,6 @@ async function scrapeCalendar() {
   }
 }
 
-// =========================
-// Scrape Pivot Table
-// =========================
-async function scrapePivotTables() {
-  console.log('Scraping pivot tables...');
-  const url = 'https://www.newsmaker.id/index.php/id/pivot-fibonacci-2?cid=107';
-
-  try {
-    const { data } = await axios.get(url);
-    const $ = cheerio.load(data);
-    const dropdownOptions = [];
-    const tableMap = {};
-
-    $('#currencies option').each((_, el) => {
-      const value = $(el).attr('value');
-      const label = $(el).text().trim();
-      if (value && label) dropdownOptions.push({ value, label });
-    });
-
-    $('.table-bordered').each((i, table) => {
-      const rows = [];
-      $(table).find('tbody tr').each((_, tr) => {
-        const tds = $(tr).find('td');
-        if (tds.length === 5) {
-          rows.push({
-            date: $(tds[0]).text().trim(),
-            open: $(tds[1]).text().trim(),
-            high: $(tds[2]).text().trim(),
-            low: $(tds[3]).text().trim(),
-            close: $(tds[4]).text().trim(),
-          });
-        }
-      });
-      const label = dropdownOptions[i]?.label || `Data-${i}`;
-      tableMap[label] = rows;
-    });
-
-    cachedPivotTables = {
-      updatedAt: new Date(),
-      dropdowns: dropdownOptions,
-      tables: tableMap,
-    };
-
-    lastUpdatedPivot = new Date();
-    console.log('✅ Pivot table updated');
-  } catch (err) {
-    console.error('❌ Pivot table scraping failed:', err.message);
-  }
-}
 
 // =========================
 // Scrape Live Quotes
@@ -302,7 +253,6 @@ async function scrapeQuotes() {
 
 const BASE_URL = 'https://newsmaker.id/index.php/en/historical-data-2';
 const MAX_CONCURRENT_SCRAPES = 10;
-const SYMBOLS_CACHE_TTL_MS = 1000 * 60 * 10;
 
 
 let cachedSymbols = null;
@@ -337,7 +287,7 @@ function parseNumber(str) {
 // === 1. GET ALL SYMBOLS ===
 async function getAllSymbols() {
   const now = Date.now();
-  if (cachedSymbols && (now - cachedSymbolsTimestamp) < SYMBOLS_CACHE_TTL_MS) {
+  if (cachedSymbols && (now - cachedSymbolsTimestamp)) {
     console.log(`🟡 Using cached symbols: ${cachedSymbols.length}`);
     return cachedSymbols;
   }
