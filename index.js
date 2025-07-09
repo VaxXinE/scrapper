@@ -44,14 +44,14 @@ const newsCategories = [
   'analysis/analysis-opinion',
 ];
 
-async function getOrSetCache(key, fetchFn, expire = 3600) {
+async function getOrSetCache(key, fetchFn) {
   const cached = await redis.get(key);
   if (cached) {
     console.log(`Serving cache for ${key}`);
     return JSON.parse(cached);
   }
   const fresh = await fetchFn();
-  await redis.set(key, JSON.stringify(fresh), 'EX', expire);
+  await redis.set(key, JSON.stringify(fresh));
   console.log(`Cache set for ${key}`);
   return fresh;
 }
@@ -88,7 +88,7 @@ async function scrapeNews() {
         const offset = i * 10;
         const url = `https://www.newsmaker.id/index.php/en/${cat}?start=${offset}`;
         const { data } = await axios.get(url, {
-          timeout: 120000,
+          timeout: 360000,
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
 
