@@ -24,7 +24,7 @@ const CACHE_DURATION_HISTORICAL_INMS = 1000 * 60 * 5;
 const Redis = require('ioredis');
 
 // Gunakan variabel lingkungan untuk koneksi fleksibel
-const redis = new Redis(process.env.REDIS_URL || {
+const redis = new Redis(process.env.REDIS_PUBLIC_URL || {
   host: '127.0.0.1', // Redis lokal
   port: 6379,
   retryStrategy: (times) => Math.min(times * 50, 2000),
