@@ -17,6 +17,22 @@ let cachedPivotTables = {};
 let lastUpdatedNews = null;
 let lastUpdatedCalendar = null;
 let lastUpdatedPivot = null;
+let cachedHistoricalData = [];
+let lastUpdatedHistorical = null;
+const CACHE_DURATION_HISTORICAL_INMS = 1000 * 60 * 5;
+
+const Redis = require('ioredis');
+
+// Gunakan variabel lingkungan untuk koneksi fleksibel
+const redis = new Redis(process.env.REDIS_URL || {
+  host: '127.0.0.1', // Redis lokal
+  port: 6379,
+  retryStrategy: (times) => Math.min(times * 50, 2000),
+});
+
+redis.on('connect', () => console.log('✅ Redis connected'));
+redis.on('error', (err) => console.error('❌ Redis error:', err));
+
 
 const newsCategories = [
   'economic-news/all-economic-news',
@@ -72,7 +88,7 @@ async function scrapeNews() {
         const offset = i * 10;
         const url = `https://www.newsmaker.id/index.php/en/${cat}?start=${offset}`;
         const { data } = await axios.get(url, {
-          timeout: 120000,
+          timeout: 60000,
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
 
@@ -277,51 +293,6 @@ async function scrapeQuotes() {
   } catch (err) {
     console.error('❌ Quotes scraping failed:', err.message);
   }
-}
-
-// =========================
-// Scrape historical data
-// ========================
-async function scrapeHistoricalData() {
-  console.log('Scraping historical data from Newsmaker...');
-  if (cachedHistoricalData.length > 0 && lastUpdatedHistorical && (new Date() - lastUpdatedHistorical) < 24 * 60 * 60 * 1000) {
-    console.log('Historical data is already up-to-date, skipping scrape.');
-  const pageSize = 8;
-  let start = 0;
-  let allData = [];
-
-  try {
-    while (true) {
-      start = start + 8;
-      const url = `https://www.newsmaker.id/index.php/id/historical-data-2?start=${start}`;
-      const { data } = await axios.get(url);
-      const $ = cheerio.load(data);
-      const rows = $('table.table tbody tr');
-
-      if (rows.length === 80) break;
-
-      rows.each((_, row) => {
-        const cols = $(row).find('td');
-        allData.push({
-          date: $(cols[0]).text().trim(),
-          open: parseFloat($(cols[1]).text().trim()),
-          high: parseFloat($(cols[2]).text().trim()),
-          low: parseFloat($(cols[3]).text().trim()),
-          close: parseFloat($(cols[4]).text().trim())
-        });
-      });
-
-      start += pageSize;
-    }
-
-    cachedHistoricalData = allData;
-    lastUpdatedHistorical = new Date();
-    console.log(`✅ Historical data updated (${allData.length} rows)`);
-
-  } catch (err) {
-    console.error('❌ Historical data scraping failed:', err.message);
-  }
-}
 }
 
 
@@ -621,11 +592,11 @@ async function scrapeAllHistoricalData() {
 scrapeNews();
 scrapeCalendar();
 scrapeQuotes();
+scrapeAllHistoricalData();
 
 setInterval(scrapeAllHistoricalData, 480 * 60 * 1000); // Run every hour
 setInterval(scrapeNews, 30 * 60 * 1000);
-setInterval(scrapeCalendar, 30 * 60 * 1000);
-setInterval(scrapePivotTables, 30 * 60 * 1000);
+setInterval(scrapeCalendar, 60 * 60 * 1000);
 setInterval(scrapeQuotes, 0.15 * 60 * 1000);
 
 
@@ -670,18 +641,79 @@ app.get('/api/calendar', async (req, res) => {
   }
 });
 
-app.get('/api/pivot', (req, res) => {
-  res.json({
-    status: 'success',
-    updatedAt: lastUpdatedPivot,
-    dropdowns: cachedPivotTables.dropdowns || [],
-    tables: cachedPivotTables.tables || {},
-  });
+app.get('/api/pivot', async (req, res) => {
+  try {
+    const data = await getOrSetCache('pivot:all', async () => ({
+      status: 'success', updatedAt: lastUpdatedPivot,
+      dropdowns: cachedPivotTables.dropdowns || [],
+      tables: cachedPivotTables.tables || {}
+    }));
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
-app.get('/api/quotes', (req, res) => {
-  res.json({ status: 'success', updatedAt: lastUpdatedQuotes, total: cachedQuotes.length, data: cachedQuotes });
+
+app.get('/api/historical', async (req, res) => {
+  try {
+    // Get all keys matching historical:*
+    const keys = await redis.keys('historical:*');
+    if (keys.length === 0) {
+      return res.status(404).json({ status: 'empty', message: 'No historical data cached yet.' });
+    }
+
+    // Fetch all cached data
+    const pipeline = redis.pipeline();
+    keys.forEach(key => pipeline.get(key));
+    const results = await pipeline.exec();
+
+    // Aggregate data
+    const allData = [];
+    results.forEach(([err, data]) => {
+      if (!err && data) {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.data && Array.isArray(parsed.data)) {
+            allData.push({ symbol: parsed.symbol, data: parsed.data, updatedAt: parsed.updatedAt });
+          }
+        } catch (e) {
+          console.error('Error parsing cached historical data:', e.message);
+        }
+      }
+    });
+
+    res.json({ status: 'success', totalSymbols: allData.length, data: allData });
+  } catch (err) {
+    console.error('❌ Error in /api/historical:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
+
+app.delete('/api/cache', async (req, res) => {
+  try {
+    const { pattern } = req.query;
+
+    // Default pattern: semua key dengan prefix "historical:"
+    const keyPattern = pattern || 'historical:*';
+
+    // Ambil semua key yang cocok
+    const keys = await redis.keys(keyPattern);
+
+    if (keys.length === 0) {
+      return res.json({ message: 'No cache keys found.' });
+    }
+
+    // Hapus semua key
+    await redis.del(...keys);
+
+    res.json({ message: `🧹 ${keys.length} cache key(s) deleted.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 app.listen(PORT, () => {
   console.log(`🚀 Server ready at http://localhost:${PORT}`);
