@@ -655,6 +655,10 @@ app.get('/api/pivot', async (req, res) => {
   }
 });
 
+app.get('/api/quotes', (req, res) => {
+  res.json({ status: 'success', updatedAt: lastUpdatedQuotes, total: cachedQuotes.length, data: cachedQuotes });
+});
+
 
 app.get('/api/historical', async (req, res) => {
   try {
