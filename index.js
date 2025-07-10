@@ -27,7 +27,7 @@ const Redis = require('ioredis');
 const redis = new Redis(process.env.REDIS_PUBLIC_URL || {
   host: '127.0.0.1', // Redis lokal
   port: 6379,
-  retryStrategy: (times) => Math.min(times * 50, 2000),
+  retryStrategy: (times) => Math.min(times * 50, 2000) ,
 });
 
 redis.on('connect', () => console.log('✅ Redis connected'));
@@ -44,15 +44,21 @@ const newsCategories = [
   'analysis/analysis-opinion',
 ];
 
-async function getOrSetCache(key, fetchFn) {
+async function getOrSetCache(key, fetchFn, ttlInSeconds = null) {
   const cached = await redis.get(key);
   if (cached) {
-    console.log(`Serving cache for ${key}`);
+    console.log(`📦 Serving from Redis cache: ${key}`);
     return JSON.parse(cached);
   }
+
   const fresh = await fetchFn();
-  await redis.set(key, JSON.stringify(fresh));
-  console.log(`Cache set for ${key}`);
+  if (ttlInSeconds) {
+    await redis.set(key, JSON.stringify(fresh), 'EX', ttlInSeconds);
+    console.log(`🆕 Cache set for ${key} with TTL ${ttlInSeconds}s`);
+  } else {
+    await redis.set(key, JSON.stringify(fresh));
+    console.log(`🆕 Cache set for ${key} without TTL`);
+  }
   return fresh;
 }
 
@@ -79,13 +85,13 @@ async function fetchNewsDetail(url) {
 // =========================
 async function scrapeNews() {
   console.log('Scraping news...');
-  const pageLimit = 10;
+  const pageLimit = 5;
   const results = [];
 
   try {
     for (const cat of newsCategories) {
       for (let i = 0; i < pageLimit; i++) {
-        const offset = i * 10;
+        const offset = i * 12;
         const url = `https://www.newsmaker.id/index.php/en/${cat}?start=${offset}`;
         const { data } = await axios.get(url, {
           timeout: 360000,
@@ -131,6 +137,16 @@ async function scrapeNews() {
 
     cachedNews = uniqueNews;
     lastUpdatedNews = new Date();
+    try {
+      const keys = await redis.keys('news:*');
+      if (keys.length > 0) {
+        await redis.del(...keys);
+        console.log(`♻️ Cleared ${keys.length} news:* cache key(s) after scraping.`);
+      }
+    } catch (err) {
+      console.error('❌ Failed to clear news:* cache:', err.message);
+    }
+
     console.log(`✅ News updated (${cachedNews.length} items)`);
   } catch (err) {
     console.error('❌ News scraping failed:', err.message);
@@ -519,7 +535,7 @@ async function scrapeAllHistoricalData() {
         // Store data in Redis cache per symbol
         const cacheKey = `historical:${name.toLowerCase()}:all`;
         try {
-          await redis.set(cacheKey, JSON.stringify({ status: 'success', symbol: name, data, updatedAt: new Date() }), 'EX', 60 * 60);
+          await redis.set(cacheKey, JSON.stringify({ status: 'success', symbol: name, data, updatedAt: new Date() }), 'EX', 60 * 60 * 2);
           console.log(`💾 Cached historical data for ${name} with key ${cacheKey}`);
         } catch (err) {
           console.error(`❌ Failed to cache historical data for ${name}:`, err.message);
@@ -544,7 +560,7 @@ scrapeCalendar();
 scrapeQuotes();
 scrapeAllHistoricalData();
 
-setInterval(scrapeAllHistoricalData, 480 * 60 * 1000); // Run every hour
+setInterval(scrapeAllHistoricalData, 60 * 60 * 1000); // Run every hour
 setInterval(scrapeNews, 30 * 60 * 1000);
 setInterval(scrapeCalendar, 60 * 60 * 1000);
 setInterval(scrapeQuotes, 0.15 * 60 * 1000);
@@ -571,7 +587,8 @@ app.get('/api/news', async (req, res) => {
         );
       }
       return { status: 'success', updatedAt: lastUpdatedNews, total: filtered.length, data: filtered };
-    });
+    }, 1700); // TTL 5 menit
+
     res.json(data);
   } catch (err) {
     console.error(err);
