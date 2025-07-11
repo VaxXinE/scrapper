@@ -229,6 +229,21 @@ async function scrapeCalendar() {
     console.error('❌ Calendar scraping failed:', err.message);
     if (browser) await browser.close();
   }
+
+    // Update Redis cache setelah scraping selesai
+  try {
+    await redis.set('calendar:all', JSON.stringify({
+      status: 'success',
+      updatedAt: new Date(),
+      total: eventsData.length,
+      data: eventsData
+    }), 'EX', 60 * 60); // TTL 15 menit
+
+    console.log('🧠 Calendar data saved to Redis with TTL 15 minutes');
+  } catch (err) {
+    console.error('❌ Failed to save calendar to Redis:', err.message);
+  }
+
 }
 
 
@@ -562,7 +577,7 @@ scrapeAllHistoricalData();
 
 setInterval(scrapeAllHistoricalData, 60 * 60 * 1000); // Run every hour
 setInterval(scrapeNews, 30 * 60 * 1000);
-setInterval(scrapeCalendar, 60 * 60 * 1000);
+setInterval(scrapeCalendar, 45 * 60 * 1000);
 setInterval(scrapeQuotes, 0.15 * 60 * 1000);
 
 
@@ -598,32 +613,29 @@ app.get('/api/news', async (req, res) => {
 
 app.get('/api/calendar', async (req, res) => {
   try {
-    const data = await getOrSetCache('calendar:all', async () => ({
-      status: 'success', updatedAt: lastUpdatedCalendar, total: cachedCalendar.length, data: cachedCalendar
-    }));
-    res.json(data);
+    const cached = await redis.get('calendar:all');
+    if (cached) {
+      console.log('📦 Serving calendar from Redis cache');
+      return res.json(JSON.parse(cached));
+    }
+
+    // Fallback: scrape kalau cache kosong
+    await scrapeCalendar();
+    const freshData = {
+      status: 'success',
+      updatedAt: lastUpdatedCalendar,
+      total: cachedCalendar.length,
+      data: cachedCalendar
+    };
+
+    // Simpan ke Redis juga untuk next request
+    await redis.set('calendar:all', JSON.stringify(freshData), 'EX', 60 * 60);
+
+    res.json(freshData);
   } catch (err) {
-    console.error(err);
+    console.error('❌ Error in /api/calendar:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
-});
-
-app.get('/api/pivot', async (req, res) => {
-  try {
-    const data = await getOrSetCache('pivot:all', async () => ({
-      status: 'success', updatedAt: lastUpdatedPivot,
-      dropdowns: cachedPivotTables.dropdowns || [],
-      tables: cachedPivotTables.tables || {}
-    }));
-    res.json(data);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.get('/api/quotes', (req, res) => {
-  res.json({ status: 'success', updatedAt: lastUpdatedQuotes, total: cachedQuotes.length, data: cachedQuotes });
 });
 
 
