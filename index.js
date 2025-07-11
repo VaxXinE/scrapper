@@ -672,6 +672,10 @@ app.get('/api/historical', async (req, res) => {
   }
 });
 
+app.get('/api/quotes', (req, res) => {
+  res.json({ status: 'success', updatedAt: lastUpdatedQuotes, total: cachedQuotes.length, data: cachedQuotes });
+});
+
 app.delete('/api/cache', async (req, res) => {
   try {
     const { pattern } = req.query;
