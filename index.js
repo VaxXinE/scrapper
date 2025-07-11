@@ -221,27 +221,25 @@ async function scrapeCalendar() {
     });
 
     cachedCalendar = eventsData;
-    lastUpdatedCalendar = new Date();
-    await browser.close();
-    console.log(`✅ Calendar updated (${cachedCalendar.length} valid events)`);
+lastUpdatedCalendar = new Date();
+await browser.close();
+console.log(`✅ Calendar updated (${cachedCalendar.length} valid events)`);
 
-  } catch (err) {
-    console.error('❌ Calendar scraping failed:', err.message);
+try {
+  await redis.set('calendar:all', JSON.stringify({
+    status: 'success',
+    updatedAt: lastUpdatedCalendar,
+    total: cachedCalendar.length,
+    data: cachedCalendar
+  }), 'EX', 60 * 15);
+
+  console.log('🧠 Calendar data saved to Redis with TTL 15 minutes');
+} catch (err) {
+  console.error('❌ Failed to save calendar to Redis:', err.message);
+}
+} catch (err) {
     if (browser) await browser.close();
-  }
-
-    // Update Redis cache setelah scraping selesai
-  try {
-    await redis.set('calendar:all', JSON.stringify({
-      status: 'success',
-      updatedAt: new Date(),
-      total: eventsData.length,
-      data: eventsData
-    }), 'EX', 60 * 60); // TTL 15 menit
-
-    console.log('🧠 Calendar data saved to Redis with TTL 15 minutes');
-  } catch (err) {
-    console.error('❌ Failed to save calendar to Redis:', err.message);
+    console.error('❌ Calendar scraping failed:', err.message);
   }
 
 }
@@ -577,7 +575,7 @@ scrapeAllHistoricalData();
 
 setInterval(scrapeAllHistoricalData, 60 * 60 * 1000); // Run every hour
 setInterval(scrapeNews, 30 * 60 * 1000);
-setInterval(scrapeCalendar, 45 * 60 * 1000);
+setInterval(scrapeCalendar, 60 * 60 * 1000);
 setInterval(scrapeQuotes, 0.15 * 60 * 1000);
 
 
