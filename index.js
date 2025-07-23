@@ -650,15 +650,15 @@ async function scrapeAllHistoricalData() {
 // =========================
 scrapeNews();
 scrapeNewsID();
-// scrapeCalendar();
-// scrapeQuotes();
-// scrapeAllHistoricalData();
+scrapeCalendar();
+scrapeQuotes();
+scrapeAllHistoricalData();
 
-// setInterval(scrapeAllHistoricalData, 60 * 60 * 1000); // Run every hour
-// setInterval(scrapeNews, 30 * 60 * 1000);
-// setInterval(scrapeNewsID, 30 * 60 * 1000);
-// setInterval(scrapeCalendar, 60 * 60 * 1000);
-// setInterval(scrapeQuotes, 0.15 * 60 * 1000);
+setInterval(scrapeAllHistoricalData, 60 * 60 * 1000); // Run every hour
+setInterval(scrapeNews, 30 * 60 * 1000);
+setInterval(scrapeNewsID, 30 * 60 * 1000);
+setInterval(scrapeCalendar, 60 * 60 * 1000);
+setInterval(scrapeQuotes, 0.15 * 60 * 1000);
 
 
 // =========================
