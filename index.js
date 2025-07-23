@@ -13,13 +13,9 @@ app.use(cors());
 
 let cachedNews = [];
 let cachedCalendar = [];
-let cachedPivotTables = {};
 let lastUpdatedNews = null;
 let lastUpdatedCalendar = null;
-let lastUpdatedPivot = null;
-let cachedHistoricalData = [];
-let lastUpdatedHistorical = null;
-const CACHE_DURATION_HISTORICAL_INMS = 1000 * 60 * 5;
+
 
 const Redis = require('ioredis');
 
@@ -66,6 +62,20 @@ async function getOrSetCache(key, fetchFn, ttlInSeconds = null) {
 // Fetch detail news
 // =========================
 async function fetchNewsDetail(url) {
+  try {
+    const { data } = await axios.get(url);
+    const $ = cheerio.load(data);
+    const articleDiv = $('div.article-content').clone();
+    articleDiv.find('span, h3').remove(); // hapus span dengan tanggal + share
+    const plainText = articleDiv.text().trim();
+    return { text: plainText };
+  } catch (err) {
+    console.error(`Failed to fetch detail from ${url}:`, err.message);
+    return { text: null };
+  }
+}
+
+async function fetchNewsDetailID(url) {
   try {
     const { data } = await axios.get(url);
     const $ = cheerio.load(data);
@@ -148,6 +158,76 @@ async function scrapeNews() {
     }
 
     console.log(`✅ News updated (${cachedNews.length} items)`);
+  } catch (err) {
+    console.error('❌ News scraping failed:', err.message);
+  }
+}
+
+async function scrapeNewsID() {
+  console.log('Scraping ID news...');
+  const pageLimit = 5;
+  const results = [];
+
+  try {
+    for (const cat of newsCategories) {
+      for (let i = 0; i < pageLimit; i++) {
+        const offset = i * 12;
+        const url = `https://www.newsmaker.id/index.php/id/${cat}?start=${offset}`;
+        const { data } = await axios.get(url, {
+          timeout: 360000,
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
+
+        const $ = cheerio.load(data);
+        const newsItems = [];
+
+        $('div.single-news-item').each((_, el) => {
+          const titleID = $(el).find('h5.card-title a').text().trim();
+          const link = 'https://www.newsmaker.id' + $(el).find('h5.card-title a').attr('href');
+          const image = 'https://www.newsmaker.id' + $(el).find('img.card-img').attr('src');
+          const category = $(el).find('span.category-label').text().trim();
+
+          let date = '';
+          let summaryID = '';
+
+          $(el).find('p.card-text').each((_, p) => {
+            const text = $(p).text().trim();
+            if (/\d{1,2} \w+ \d{4}/.test(text)) date = text;
+            else summaryID = text;
+          });
+
+          if (titleID && link && summaryID) {
+            newsItems.push({ titleID, link, image, category, date, summaryID });
+          }
+        });
+
+        for (const item of newsItems) {
+          const detailID = await fetchNewsDetailID(item.link);
+          results.push({ ...item, detailID });
+        }
+      }
+    }
+
+    const seen = new Set();
+    const uniqueNews = results.filter(news => {
+      if (seen.has(news.link)) return false;
+      seen.add(news.link);
+      return true;
+    });
+
+    cachedNews = uniqueNews;
+    lastUpdatedNews = new Date();
+    try {
+      const keys = await redis.keys('news:*');
+      if (keys.length > 0) {
+        await redis.del(...keys);
+        console.log(`♻️ Cleared ${keys.length} news:* cache key(s) after scraping.`);
+      }
+    } catch (err) {
+      console.error('❌ Failed to clear news:* cache:', err.message);
+    }
+
+    console.log(`✅ News ID updated (${cachedNews.length} items)`);
   } catch (err) {
     console.error('❌ News scraping failed:', err.message);
   }
@@ -569,14 +649,16 @@ async function scrapeAllHistoricalData() {
 // Schedule scraper
 // =========================
 scrapeNews();
-scrapeCalendar();
-scrapeQuotes();
-scrapeAllHistoricalData();
+scrapeNewsID();
+// scrapeCalendar();
+// scrapeQuotes();
+// scrapeAllHistoricalData();
 
-setInterval(scrapeAllHistoricalData, 60 * 60 * 1000); // Run every hour
-setInterval(scrapeNews, 30 * 60 * 1000);
-setInterval(scrapeCalendar, 60 * 60 * 1000);
-setInterval(scrapeQuotes, 0.15 * 60 * 1000);
+// setInterval(scrapeAllHistoricalData, 60 * 60 * 1000); // Run every hour
+// setInterval(scrapeNews, 30 * 60 * 1000);
+// setInterval(scrapeNewsID, 30 * 60 * 1000);
+// setInterval(scrapeCalendar, 60 * 60 * 1000);
+// setInterval(scrapeQuotes, 0.15 * 60 * 1000);
 
 
 // =========================
@@ -599,7 +681,33 @@ app.get('/api/news', async (req, res) => {
           news.detail?.text?.toLowerCase().includes(keyword)
         );
       }
-      return { status: 'success', updatedAt: lastUpdatedNews, total: filtered.length, data: filtered };
+      return { status: 'EN success', updatedAt: lastUpdatedNews, total: filtered.length, data: filtered };
+    }, 1700); // TTL 5 menit
+
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+app.get('/api/id/news', async (req, res) => {
+  const { category = 'all', search = '' } = req.query;
+  const cacheKey = `news:${category.toLowerCase()}:${search.toLowerCase()}`;
+  try {
+    const data = await getOrSetCache(cacheKey, async () => {
+      let filtered = cachedNews;
+      if (category !== 'all') {
+        filtered = filtered.filter(news => news.category.toLowerCase().includes(category.toLowerCase()));
+      }
+      if (search) {
+        const keyword = search.toLowerCase();
+        filtered = filtered.filter(news =>
+          news.titleID.toLowerCase().includes(keyword) ||
+          news.summaryID.toLowerCase().includes(keyword) ||
+          news.detailID?.text?.toLowerCase().includes(keyword)
+        );
+      }
+      return { status: 'ID success', updatedAt: lastUpdatedNews, total: filtered.length, data: filtered };
     }, 1700); // TTL 5 menit
 
     res.json(data);
