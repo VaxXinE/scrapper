@@ -101,7 +101,7 @@ async function scrapeNews() {
   try {
     for (const cat of newsCategories) {
       for (let i = 0; i < pageLimit; i++) {
-        const offset = i * 12;
+        const offset = i * 10;
         const url = `https://www.newsmaker.id/index.php/en/${cat}?start=${offset}`;
         const { data } = await axios.get(url, {
           timeout: 360000,
@@ -171,7 +171,7 @@ async function scrapeNewsID() {
   try {
     for (const cat of newsCategories) {
       for (let i = 0; i < pageLimit; i++) {
-        const offset = i * 12;
+        const offset = i * 10;
         const url = `https://www.newsmaker.id/index.php/id/${cat}?start=${offset}`;
         const { data } = await axios.get(url, {
           timeout: 360000,
