@@ -78,9 +78,9 @@ async function fetchNewsDetail(url) {
   }
 }
 
-async function fetchNewsDetailID(url) {
+async function fetchNewsDetailID(urlId) {
   try {
-    const { data } = await axios.get(url, {
+    const { data } = await axios.get(urlId, {
           timeout: 360000,
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
@@ -90,7 +90,7 @@ async function fetchNewsDetailID(url) {
     const plainText = articleDiv.text().trim();
     return { text: plainText };
   } catch (err) {
-    console.error(`Failed to fetch detail from ${url}:`, err.message);
+    console.error(`Failed to fetch detail from ${urlId}:`, err.message);
     return { text: null };
   }
 }
@@ -185,7 +185,7 @@ async function scrapeNewsID() {
         });
 
         const $ = cheerio.load(data);
-        const newsItems = [];
+        const newsIdItems = [];
 
         $('div.single-news-item').each((_, el) => {
           const titleID = $(el).find('h5.card-title a').text().trim();
@@ -203,7 +203,7 @@ async function scrapeNewsID() {
           });
 
           if (titleID && linkID && summaryID) {
-            newsItems.push({ titleID, linkID, imageID, category, date, summaryID });
+            newsIdItems.push({ titleID, linkID, imageID, category, date, summaryID });
           }
         });
 
