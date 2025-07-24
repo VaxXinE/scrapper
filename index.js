@@ -207,7 +207,7 @@ async function scrapeNewsID() {
           }
         });
 
-        for (const item of newsItems) {
+        for (const item of newsIdItems) {
           const detailID = await fetchNewsDetailID(item.linkID);
           results.push({ ...item, detailID });
         }
