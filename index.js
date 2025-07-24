@@ -178,8 +178,8 @@ async function scrapeNewsID() {
     for (const cat of newsCategories) {
       for (let i = 0; i < pageLimit; i++) {
         const offset = i * 10;
-        const url = `https://www.newsmaker.id/index.php/id/${cat}?start=${offset}`;
-        const { data } = await axios.get(url, {
+        const urlId = `https://www.newsmaker.id/index.php/id/${cat}?start=${offset}`;
+        const { data } = await axios.get(urlId, {
           timeout: 720000,
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
@@ -189,8 +189,8 @@ async function scrapeNewsID() {
 
         $('div.single-news-item').each((_, el) => {
           const titleID = $(el).find('h5.card-title a').text().trim();
-          const link = 'https://www.newsmaker.id' + $(el).find('h5.card-title a').attr('href');
-          const image = 'https://www.newsmaker.id' + $(el).find('img.card-img').attr('src');
+          const linkID = 'https://www.newsmaker.id' + $(el).find('h5.card-title a').attr('href');
+          const imageID = 'https://www.newsmaker.id' + $(el).find('img.card-img').attr('src');
           const category = $(el).find('span.category-label').text().trim();
 
           let date = '';
@@ -203,7 +203,7 @@ async function scrapeNewsID() {
           });
 
           if (titleID && link && summaryID) {
-            newsItems.push({ titleID, link, image, category, date, summaryID });
+            newsItems.push({ titleID, linkID, imageID, category, date, summaryID });
           }
         });
 
@@ -215,25 +215,25 @@ async function scrapeNewsID() {
     }
 
     const seen = new Set();
-    const uniqueNews = results.filter(news => {
+    const uniqueNewsID = results.filter(news => {
       if (seen.has(news.link)) return false;
       seen.add(news.link);
       return true;
     });
 
-    cachedNews = uniqueNews;
-    lastUpdatedNews = new Date();
+    cachedNewsID = uniqueNewsID;
+    lastUpdatedNewsID = new Date();
     try {
-      const keys = await redis.keys('news:*');
+      const keys = await redis.keys('newsID:*');
       if (keys.length > 0) {
         await redis.del(...keys);
-        console.log(`♻️ Cleared ${keys.length} news:* cache key(s) after scraping.`);
+        console.log(`♻️ Cleared ${keys.length} newsID:* cache key(s) after scraping.`);
       }
     } catch (err) {
       console.error('❌ Failed to clear news:* cache:', err.message);
     }
 
-    console.log(`✅ News ID updated (${cachedNews.length} items)`);
+    console.log(`✅ News ID updated (${cachedNewsID.length} items)`);
   } catch (err) {
     console.error('❌ News scraping failed:', err.message);
   }
@@ -696,12 +696,13 @@ app.get('/api/news', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 app.get('/api/id/news', async (req, res) => {
   const { category = 'all', search = '' } = req.query;
-  const cacheKey = `news:${category.toLowerCase()}:${search.toLowerCase()}`;
+  const cacheKeyID = `news:${category.toLowerCase()}:${search.toLowerCase()}`;
   try {
-    const data = await getOrSetCache(cacheKey, async () => {
-      let filtered = cachedNews;
+    const data = await getOrSetCache(cacheKeyID, async () => {
+      let filtered = cachedNewsID;
       if (category !== 'all') {
         filtered = filtered.filter(news => news.category.toLowerCase().includes(category.toLowerCase()));
       }
