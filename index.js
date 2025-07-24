@@ -78,22 +78,22 @@ async function fetchNewsDetail(url) {
   }
 }
 
-async function fetchNewsDetailID(urlId) {
+async function fetchNewsDetailID(link) {
   try {
-    const { data } = await axios.get(urlId, {
-          timeout: 360000,
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-        });
+    const { data } = await axios.get(link, {
+      timeout: 30000,
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
     const $ = cheerio.load(data);
-    const articleDiv = $('div.article-content').clone();
-    articleDiv.find('span, h3').remove(); // hapus span dengan tanggal + share
-    const plainText = articleDiv.text().trim();
-    return { text: plainText };
+    const paragraphs = $('div.item-page p').map((_, p) => $(p).text().trim()).get();
+    return {
+      text: paragraphs.join('\n\n')
+    };
   } catch (err) {
-    console.error(`Failed to fetch detail from ${urlId}:`, err.message);
-    return { text: null };
+    throw new Error(`Failed to fetch detail ID: ${err.message}`);
   }
 }
+
 
 
 // =========================
@@ -178,51 +178,56 @@ async function scrapeNewsID() {
     for (const cat of newsCategories) {
       for (let i = 0; i < pageLimit; i++) {
         const offset = i * 10;
-        const urlId = `https://www.newsmaker.id/index.php/id/${cat}?start=${offset}`;
-        const { data } = await axios.get(urlId, {
+        const url = `https://www.newsmaker.id/index.php/id/${cat}?start=${offset}`;
+        const { data } = await axios.get(url, {
           timeout: 720000,
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
 
         const $ = cheerio.load(data);
-        const newsIdItems = [];
+        const newsItems = [];
 
         $('div.single-news-item').each((_, el) => {
-          const titleID = $(el).find('h5.card-title a').text().trim();
-          const linkID = 'https://www.newsmaker.id' + $(el).find('h5.card-title a').attr('href');
-          const imageID = 'https://www.newsmaker.id' + $(el).find('img.card-img').attr('src');
+          const title = $(el).find('h5.card-title a').text().trim();
+          const link = 'https://www.newsmaker.id' + $(el).find('h5.card-title a').attr('href');
+          const image = 'https://www.newsmaker.id' + $(el).find('img.card-img').attr('src');
           const category = $(el).find('span.category-label').text().trim();
 
           let date = '';
-          let summaryID = '';
+          let summary = '';
 
           $(el).find('p.card-text').each((_, p) => {
             const text = $(p).text().trim();
             if (/\d{1,2} \w+ \d{4}/.test(text)) date = text;
-            else summaryID = text;
+            else summary = text;
           });
 
-          if (titleID && linkID && summaryID) {
-            newsIdItems.push({ titleID, linkID, imageID, category, date, summaryID });
+          if (title && link && summary) {
+            newsItems.push({ title, link, image, category, date, summary });
           }
         });
 
-        for (const item of newsIdItems) {
-          const detailID = await fetchNewsDetailID(item.linkID);
-          results.push({ ...item, detailID });
+        for (const item of newsItems) {
+          try {
+            const detail = await fetchNewsDetailID(item.link); // Sesuaikan dengan fungsi detail ID
+            results.push({ ...item, detail });
+          } catch (e) {
+            console.error(`⚠️ Failed to fetch detail from ${item.link}:`, e.message);
+          }
         }
       }
     }
 
     const seen = new Set();
-    const uniqueNewsID = results.filter(news => {
+    const uniqueNews = results.filter(news => {
       if (seen.has(news.link)) return false;
       seen.add(news.link);
       return true;
     });
 
-    cachedNewsID = uniqueNewsID;
+    cachedNewsID = uniqueNews;
     lastUpdatedNewsID = new Date();
+
     try {
       const keys = await redis.keys('newsID:*');
       if (keys.length > 0) {
@@ -230,7 +235,7 @@ async function scrapeNewsID() {
         console.log(`♻️ Cleared ${keys.length} newsID:* cache key(s) after scraping.`);
       }
     } catch (err) {
-      console.error('❌ Failed to clear news:* cache:', err.message);
+      console.error('❌ Failed to clear newsID:* cache:', err.message);
     }
 
     console.log(`✅ News ID updated (${cachedNewsID.length} items)`);
@@ -238,6 +243,7 @@ async function scrapeNewsID() {
     console.error('❌ News ID scraping failed:', err.message);
   }
 }
+
 
 // =========================
 // Scrape Calendar
@@ -697,24 +703,35 @@ app.get('/api/news', async (req, res) => {
   }
 });
 
-app.get('/api/id/news', async (req, res) => {
+app.get('/api/news-id', async (req, res) => {
   const { category = 'all', search = '' } = req.query;
-  const cacheKeyID = `news:${category.toLowerCase()}:${search.toLowerCase()}`;
+  const cacheKey = `newsID:${category.toLowerCase()}:${search.toLowerCase()}`;
+
   try {
-    const data = await getOrSetCache(cacheKeyID, async () => {
+    const data = await getOrSetCache(cacheKey, async () => {
       let filtered = cachedNewsID;
+
       if (category !== 'all') {
-        filtered = filtered.filter(news => news.category.toLowerCase().includes(category.toLowerCase()));
+        filtered = filtered.filter(news =>
+          news.category.toLowerCase().includes(category.toLowerCase())
+        );
       }
+
       if (search) {
         const keyword = search.toLowerCase();
         filtered = filtered.filter(news =>
-          news.titleID.toLowerCase().includes(keyword) ||
-          news.summaryID.toLowerCase().includes(keyword) ||
-          news.detailID?.text?.toLowerCase().includes(keyword)
+          news.title.toLowerCase().includes(keyword) ||
+          news.summary.toLowerCase().includes(keyword) ||
+          news.detail?.text?.toLowerCase().includes(keyword)
         );
       }
-      return { status: 'ID success', updatedAt: lastUpdatedNews, total: filtered.length, data: filtered };
+
+      return {
+        status: 'ID success',
+        updatedAt: lastUpdatedNewsID,
+        total: filtered.length,
+        data: filtered
+      };
     }, 1700); // TTL 5 menit
 
     res.json(data);
@@ -723,6 +740,7 @@ app.get('/api/id/news', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 
 app.get('/api/calendar', async (req, res) => {
   try {
