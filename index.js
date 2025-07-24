@@ -202,7 +202,7 @@ async function scrapeNewsID() {
             else summaryID = text;
           });
 
-          if (titleID && link && summaryID) {
+          if (titleID && linkID && summaryID) {
             newsItems.push({ titleID, linkID, imageID, category, date, summaryID });
           }
         });
@@ -235,7 +235,7 @@ async function scrapeNewsID() {
 
     console.log(`✅ News ID updated (${cachedNewsID.length} items)`);
   } catch (err) {
-    console.error('❌ News scraping failed:', err.message);
+    console.error('❌ News ID scraping failed:', err.message);
   }
 }
 
