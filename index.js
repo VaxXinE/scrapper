@@ -63,7 +63,10 @@ async function getOrSetCache(key, fetchFn, ttlInSeconds = null) {
 // =========================
 async function fetchNewsDetail(url) {
   try {
-    const { data } = await axios.get(url);
+    const { data } = await axios.get(url, {
+          timeout: 360000,
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
     const $ = cheerio.load(data);
     const articleDiv = $('div.article-content').clone();
     articleDiv.find('span, h3').remove(); // hapus span dengan tanggal + share
@@ -77,7 +80,10 @@ async function fetchNewsDetail(url) {
 
 async function fetchNewsDetailID(url) {
   try {
-    const { data } = await axios.get(url);
+    const { data } = await axios.get(url, {
+          timeout: 360000,
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
     const $ = cheerio.load(data);
     const articleDiv = $('div.article-content').clone();
     articleDiv.find('span, h3').remove(); // hapus span dengan tanggal + share
@@ -104,7 +110,7 @@ async function scrapeNews() {
         const offset = i * 10;
         const url = `https://www.newsmaker.id/index.php/en/${cat}?start=${offset}`;
         const { data } = await axios.get(url, {
-          timeout: 360000,
+          timeout: 720000,
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
 
@@ -174,7 +180,7 @@ async function scrapeNewsID() {
         const offset = i * 10;
         const url = `https://www.newsmaker.id/index.php/id/${cat}?start=${offset}`;
         const { data } = await axios.get(url, {
-          timeout: 360000,
+          timeout: 720000,
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
 
@@ -655,8 +661,8 @@ scrapeQuotes();
 scrapeAllHistoricalData();
 
 setInterval(scrapeAllHistoricalData, 60 * 60 * 1000); // Run every hour
-setInterval(scrapeNews, 30 * 60 * 1000);
-setInterval(scrapeNewsID, 30 * 60 * 1000);
+setInterval(scrapeNews, 45 * 60 * 1000);
+setInterval(scrapeNewsID, 45 * 60 * 1000);
 setInterval(scrapeCalendar, 60 * 60 * 1000);
 setInterval(scrapeQuotes, 0.15 * 60 * 1000);
 
