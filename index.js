@@ -64,7 +64,7 @@ async function getOrSetCache(key, fetchFn, ttlInSeconds = null) {
 async function fetchNewsDetail(url) {
   try {
     const { data } = await axios.get(url, {
-          timeout: 360000,
+          timeout: 720000,
           headers: { 'User-Agent': 'Mozilla/5.0' },
         });
     const $ = cheerio.load(data);
@@ -81,7 +81,7 @@ async function fetchNewsDetail(url) {
 async function fetchNewsDetailID(link) {
   try {
     const { data } = await axios.get(link, {
-      timeout: 30000,
+      timeout: 720000,
       headers: { 'User-Agent': 'Mozilla/5.0' },
     });
     const $ = cheerio.load(data);
