@@ -12,9 +12,13 @@ const PORT = 3000;
 app.use(cors());
 
 let cachedNews = [];
+let cachedNewsID = [];
 let cachedCalendar = [];
+let cachedQuotes = [];
 let lastUpdatedNews = null;
+let lastUpdatedNewsID = null;
 let lastUpdatedCalendar = null;
+let lastUpdatedQuotes = null;
 
 
 const Redis = require('ioredis');
@@ -78,21 +82,23 @@ async function fetchNewsDetail(url) {
   }
 }
 
-async function fetchNewsDetailID(link) {
+async function fetchNewsDetailID(url) {
   try {
-    const { data } = await axios.get(link, {
-      timeout: 720000,
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-    });
+    const { data } = await axios.get(url, {
+          timeout: 720000,
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
     const $ = cheerio.load(data);
-    const paragraphs = $('div.item-page p').map((_, p) => $(p).text().trim()).get();
-    return {
-      text: paragraphs.join('\n\n')
-    };
+    const articleDiv = $('div.article-content').clone();
+    articleDiv.find('span, h3').remove(); // hapus span dengan tanggal + share
+    const plainText = articleDiv.text().trim();
+    return { text: plainText };
   } catch (err) {
-    throw new Error(`Failed to fetch detail ID: ${err.message}`);
+    console.error(`Failed to fetch detail from ${url}:`, err.message);
+    return { text: null };
   }
 }
+
 
 
 
@@ -667,8 +673,8 @@ scrapeQuotes();
 scrapeAllHistoricalData();
 
 setInterval(scrapeAllHistoricalData, 60 * 60 * 1000); // Run every hour
-setInterval(scrapeNews, 45 * 60 * 1000);
-setInterval(scrapeNewsID, 45 * 60 * 1000);
+setInterval(scrapeNews, 30 * 60 * 1000);
+setInterval(scrapeNewsID, 30 * 60 * 1000);
 setInterval(scrapeCalendar, 60 * 60 * 1000);
 setInterval(scrapeQuotes, 0.15 * 60 * 1000);
 
