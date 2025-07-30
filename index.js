@@ -1,13 +1,14 @@
+
 const express = require('express');
 const cors = require('cors');
 const puppeteer = require('puppeteer');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const http = require('http');
+const https = require('https');
 
 const app = express();
 const PORT = 3000;
-
-
 
 app.use(cors());
 
@@ -20,19 +21,17 @@ let lastUpdatedNewsID = null;
 let lastUpdatedCalendar = null;
 let lastUpdatedQuotes = null;
 
-
 const Redis = require('ioredis');
 
 // Gunakan variabel lingkungan untuk koneksi fleksibel
 const redis = new Redis(process.env.REDIS_PUBLIC_URL || {
   host: '127.0.0.1', // Redis lokal
   port: 6379,
-  retryStrategy: (times) => Math.min(times * 50, 2000) ,
+  retryStrategy: (times) => Math.min(times * 50, 2000),
 });
 
 redis.on('connect', () => console.log('✅ Redis connected'));
 redis.on('error', (err) => console.error('❌ Redis error:', err));
-
 
 const newsCategories = [
   'economic-news/all-economic-news',
@@ -44,50 +43,18 @@ const newsCategories = [
   'analysis/analysis-opinion',
 ];
 
-async function getOrSetCache(key, fetchFn, ttlInSeconds = null) {
-  const cached = await redis.get(key);
-  if (cached) {
-    console.log(`📦 Serving from Redis cache: ${key}`);
-    return JSON.parse(cached);
-  }
+// Create axios instance with keep-alive agent
+const axiosInstance = axios.create({
+  timeout: 60000,
+  headers: { 'User-Agent': 'Mozilla/5.0' },
+  httpAgent: new http.Agent({ keepAlive: true }),
+  httpsAgent: new https.Agent({ keepAlive: true }),
+});
 
-  const fresh = await fetchFn();
-  if (ttlInSeconds) {
-    await redis.set(key, JSON.stringify(fresh), 'EX', ttlInSeconds);
-    console.log(`🆕 Cache set for ${key} with TTL ${ttlInSeconds}s`);
-  } else {
-    await redis.set(key, JSON.stringify(fresh));
-    console.log(`🆕 Cache set for ${key} without TTL`);
-  }
-  return fresh;
-}
-
-// =========================
-// Fetch detail news
-// =========================
-async function fetchNewsDetail(url) {
+// Generic fetch news detail function
+async function fetchNewsDetailGeneric(url) {
   try {
-    const { data } = await axios.get(url, {
-          timeout: 720000,
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-        });
-    const $ = cheerio.load(data);
-    const articleDiv = $('div.article-content').clone();
-    articleDiv.find('span, h3').remove(); // hapus span dengan tanggal + share
-    const plainText = articleDiv.text().trim();
-    return { text: plainText };
-  } catch (err) {
-    console.error(`Failed to fetch detail from ${url}:`, err.message);
-    return { text: null };
-  }
-}
-
-async function fetchNewsDetailID(url) {
-  try {
-    const { data } = await axios.get(url, {
-          timeout: 720000,
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-        });
+    const { data } = await axiosInstance.get(url);
     const $ = cheerio.load(data);
     const articleDiv = $('div.article-content').clone();
     articleDiv.find('span, h3').remove(); // hapus span dengan tanggal + share
@@ -102,23 +69,20 @@ async function fetchNewsDetailID(url) {
 
 
 
-// =========================
-// Scrape News
-// =========================
+
 async function scrapeNews() {
   console.log('Scraping news...');
   const pageLimit = 5;
   const results = [];
 
   try {
-    for (const cat of newsCategories) {
-      for (let i = 0; i < pageLimit; i++) {
+    // Fetch all categories concurrently
+    await asyncPool(3, newsCategories, async (cat) => {
+      // For each category, fetch pages concurrently
+      await asyncPool(3, Array.from({ length: pageLimit }, (_, i) => i), async (i) => {
         const offset = i * 10;
         const url = `https://www.newsmaker.id/index.php/en/${cat}?start=${offset}`;
-        const { data } = await axios.get(url, {
-          timeout: 720000,
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-        });
+        const { data } = await axiosInstance.get(url);
 
         const $ = cheerio.load(data);
         const newsItems = [];
@@ -143,12 +107,15 @@ async function scrapeNews() {
           }
         });
 
-        for (const item of newsItems) {
-          const detail = await fetchNewsDetail(item.link);
-          results.push({ ...item, detail });
-        }
-      }
-    }
+        // Fetch news details concurrently with limit
+        const detailedNews = await asyncPool(5, newsItems, async (item) => {
+          const detail = await fetchNewsDetailGeneric(item.link);
+          return { ...item, detail };
+        });
+
+        results.push(...detailedNews);
+      });
+    });
 
     const seen = new Set();
     const uniqueNews = results.filter(news => {
@@ -159,6 +126,7 @@ async function scrapeNews() {
 
     cachedNews = uniqueNews;
     lastUpdatedNews = new Date();
+
     try {
       const keys = await redis.keys('news:*');
       if (keys.length > 0) {
@@ -181,14 +149,11 @@ async function scrapeNewsID() {
   const results = [];
 
   try {
-    for (const cat of newsCategories) {
-      for (let i = 0; i < pageLimit; i++) {
+    await asyncPool(3, newsCategories, async (cat) => {
+      await asyncPool(3, Array.from({ length: pageLimit }, (_, i) => i), async (i) => {
         const offset = i * 10;
         const url = `https://www.newsmaker.id/index.php/id/${cat}?start=${offset}`;
-        const { data } = await axios.get(url, {
-          timeout: 720000,
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-        });
+        const { data } = await axiosInstance.get(url);
 
         const $ = cheerio.load(data);
         const newsItems = [];
@@ -213,16 +178,14 @@ async function scrapeNewsID() {
           }
         });
 
-        for (const item of newsItems) {
-          try {
-            const detail = await fetchNewsDetailID(item.link); // Sesuaikan dengan fungsi detail ID
-            results.push({ ...item, detail });
-          } catch (e) {
-            console.error(`⚠️ Failed to fetch detail from ${item.link}:`, e.message);
-          }
-        }
-      }
-    }
+        const detailedNews = await asyncPool(5, newsItems, async (item) => {
+          const detail = await fetchNewsDetailGeneric(item.link);
+          return { ...item, detail };
+        });
+
+        results.push(...detailedNews);
+      });
+    });
 
     const seen = new Set();
     const uniqueNews = results.filter(news => {
