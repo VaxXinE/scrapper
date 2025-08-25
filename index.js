@@ -424,36 +424,36 @@ async function scrapeCalendar() {
 }
 
 // ===== Live Quotes =====
-async function scrapeQuotes() {
-  console.log('Scraping quotes from JSON endpoint...');
-  const url =
-    'https://www.newsmaker.id/quotes/live?s=LGD+LSI+GHSIQ5+LCOPV5+SN1U5+DJIA+DAX+DX+AUDUSD+EURUSD+GBPUSD+CHF+JPY+RP';
-  try {
-    const { data } = await axios.get(url);
-    const quotes = [];
-    for (let i = 1; i <= data[0].count; i++) {
-      let high = data[i].high !== 0 ? data[i].high : data[i].last;
-      let low = data[i].low !== 0 ? data[i].low : data[i].last;
-      let open = data[i].open !== 0 ? data[i].open : data[i].last;
+// async function scrapeQuotes() {
+//   console.log('Scraping quotes from JSON endpoint...');
+//   const url =
+//     'https://www.newsmaker.id/quotes/live?s=LGD+LSI+GHSIQ5+LCOPV5+SN1U5+DJIA+DAX+DX+AUDUSD+EURUSD+GBPUSD+CHF+JPY+RP';
+//   try {
+//     const { data } = await axios.get(url);
+//     const quotes = [];
+//     for (let i = 1; i <= data[0].count; i++) {
+//       let high = data[i].high !== 0 ? data[i].high : data[i].last;
+//       let low = data[i].low !== 0 ? data[i].low : data[i].last;
+//       let open = data[i].open !== 0 ? data[i].open : data[i].last;
 
-      quotes.push({
-        symbol: data[i].symbol,
-        last: data[i].last,
-        high,
-        low,
-        open,
-        prevClose: data[i].prevClose,
-        valueChange: data[i].valueChange,
-        percentChange: data[i].percentChange,
-      });
-    }
-    cachedQuotes = quotes;
-    lastUpdatedQuotes = new Date();
-    console.log(`✅ Quotes updated (${quotes.length} items)`);
-  } catch (err) {
-    console.error('❌ Quotes scraping failed:', err.message);
-  }
-}
+//       quotes.push({
+//         symbol: data[i].symbol,
+//         last: data[i].last,
+//         high,
+//         low,
+//         open,
+//         prevClose: data[i].prevClose,
+//         valueChange: data[i].valueChange,
+//         percentChange: data[i].percentChange,
+//       });
+//     }
+//     cachedQuotes = quotes;
+//     lastUpdatedQuotes = new Date();
+//     console.log(`✅ Quotes updated (${quotes.length} items)`);
+//   } catch (err) {
+//     console.error('❌ Quotes scraping failed:', err.message);
+//   }
+// }
 
 // ===== Historical =====
 const BASE_URL = 'https://newsmaker.id/index.php/en/historical-data-2';
@@ -690,15 +690,15 @@ async function scrapeAllHistoricalData() {
 withLock('lock:scrapeNews:en', 300, () => scrapeNewsByLang('en'));
 withLock('lock:scrapeNews:id', 300, () => scrapeNewsByLang('id'));
 scrapeCalendar();
-scrapeQuotes();
+// scrapeQuotes();
 withLock('lock:hist:all', 3600, () => scrapeAllHistoricalData());
 
-// Note: 60*60*1000 = 1 jam
+// // Note: 60*60*1000 = 1 jam
 setInterval(() => withLock('lock:hist:all', 3600, () => scrapeAllHistoricalData()), 4 * 60 * 60 * 1000); // tiap 4 jam
 setInterval(() => withLock('lock:scrapeNews:en', 300, () => scrapeNewsByLang('en')), 10 * 60 * 1000); // 10 menit
 setInterval(() => withLock('lock:scrapeNews:id', 300, () => scrapeNewsByLang('id')), 10 * 60 * 1000); // 10 menit
 setInterval(scrapeCalendar, 60 * 60 * 1000); // 1 jam
-setInterval(scrapeQuotes, 0.15 * 60 * 1000); // 9 detik
+// setInterval(scrapeQuotes, 0.15 * 60 * 1000); // 9 detik
 
 // ===== API =====
 app.get('/api/news', async (req, res) => {
@@ -771,56 +771,125 @@ app.get('/api/calendar', async (req, res) => {
   }
 });
 
+// /api/historical — MySQL direct, sorted per-symbol by latest date (date = VARCHAR)
 app.get('/api/historical', async (req, res) => {
   try {
-    const keys = await redis.keys('historical:*');
-    if (keys.length === 0) {
-      return res.status(404).json({ status: 'empty', message: 'No historical data cached yet.' });
+    const { QueryTypes } = require('sequelize');
+
+    const tableName = HistoricalData.getTableName().toString();
+
+    // 1) Urutkan daftar symbol berdasarkan tanggal terbaru masing-masing
+    const orderedSymbols = await sequelize.query(
+      `
+      SELECT
+        symbol,
+        MAX(STR_TO_DATE(\`date\`, '%d %b %Y')) AS latestDate,
+        MAX(updatedAt) AS updatedAtMax
+      FROM \`${tableName}\`
+      GROUP BY symbol
+      ORDER BY latestDate IS NULL, latestDate DESC, updatedAtMax DESC
+      `,
+      { type: QueryTypes.SELECT }
+    );
+
+    if (!orderedSymbols.length) {
+      return res.status(404).json({
+        status: 'empty',
+        message: 'No historical data found in database.',
+      });
     }
 
-    const pipeline = redis.pipeline();
-    keys.forEach((key) => pipeline.get(key));
-    const results = await pipeline.exec();
-
+    // 2) Ambil data per symbol (urut dari tanggal paling baru)
     const allData = [];
-    results.forEach(([err, data]) => {
-      if (!err && data) {
-        try {
-          const parsed = JSON.parse(data);
-          if (parsed.data && Array.isArray(parsed.data)) {
-            allData.push({ symbol: parsed.symbol, data: parsed.data, updatedAt: parsed.updatedAt });
-          }
-        } catch (e) {
-          console.error('Error parsing cached historical data:', e.message);
-        }
-      }
-    });
+    for (const row of orderedSymbols) {
+      const symbol = row.symbol;
 
-    res.json({ status: 'success', totalSymbols: allData.length, data: allData });
+      const rows = await HistoricalData.findAll({
+        where: { symbol },
+        order: [[sequelize.literal("STR_TO_DATE(`date`, '%d %b %Y')"), 'DESC']],
+        raw: true,
+      });
+
+      allData.push({
+        symbol,
+        data: rows,
+        updatedAt: row.updatedAtMax || null,
+      });
+    }
+
+    return res.json({
+      status: 'success',
+      totalSymbols: allData.length,
+      data: allData,
+    });
   } catch (err) {
-    console.error('❌ Error in /api/historical:', err.message);
+    console.error('❌ Error in /api/historical (MySQL direct, varchar date):', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-app.get('/api/quotes', (req, res) => {
-  if (cachedQuotes.length === 0) {
-    return res.status(404).json({ status: 'error', message: 'No quotes data available' });
+
+// ===== REFACTORED: QUOTES NO-CACHE =====
+app.get('/api/quotes', async (req, res) => {
+  try {
+    const url =
+      'https://www.newsmaker.id/quotes/live?s=LGD+LSI+GHSIQ5+LCOPV5+SN1U5+DJIA+DAX+DX+AUDUSD+EURUSD+GBPUSD+CHF+JPY+RP';
+
+    // Always fetch fresh from source (no cache usage)
+    const { data } = await axios.get(url, { timeout: 15000 });
+
+    const quotes = [];
+    for (let i = 1; i <= data[0].count; i++) {
+      const high = data[i].high !== 0 ? data[i].high : data[i].last;
+      const low = data[i].low !== 0 ? data[i].low : data[i].last;
+      const open = data[i].open !== 0 ? data[i].open : data[i].last;
+
+      quotes.push({
+        symbol: data[i].symbol,
+        last: data[i].last,
+        high,
+        low,
+        open,
+        prevClose: data[i].prevClose,
+        valueChange: data[i].valueChange,
+        percentChange: data[i].percentChange,
+      });
+    }
+
+    return res.json({
+      status: 'success',
+      updatedAt: new Date(),
+      total: quotes.length,
+      data: quotes,
+      source: 'live', // penanda live fetch
+    });
+  } catch (err) {
+    console.error('❌ Live quotes fetch failed:', err.message);
+
+    // --- OPSIONAL: Fallback ke cache RAM kalau ada (boleh dihapus kalau mau pure no-cache) ---
+    if (Array.isArray(cachedQuotes) && cachedQuotes.length > 0) {
+      const validQuotes = cachedQuotes.map((q) => ({
+        ...q,
+        high: q.high !== 0 ? q.high : q.last,
+        low: q.low !== 0 ? q.low : q.last,
+        open: q.open !== 0 ? q.open : q.last,
+      }));
+      return res.json({
+        status: 'degraded',
+        updatedAt: lastUpdatedQuotes,
+        total: validQuotes.length,
+        data: validQuotes,
+        source: 'fallback-cache',
+      });
+    }
+    // -----------------------------------------------------------------------------------------
+
+    return res.status(502).json({
+      status: 'error',
+      message: 'Failed to fetch live quotes',
+      detail: err.message,
+    });
   }
-
-  const validQuotes = cachedQuotes.map((q) => ({
-    ...q,
-    high: q.high !== 0 ? q.high : q.last,
-    low: q.low !== 0 ? q.low : q.last,
-    open: q.open !== 0 ? q.open : q.last,
-  }));
-
-  res.json({
-    status: 'success',
-    updatedAt: lastUpdatedQuotes,
-    total: validQuotes.length,
-    data: validQuotes,
-  });
 });
 
 app.delete('/api/cache', async (req, res) => {
