@@ -6,11 +6,18 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { sequelize, News, HistoricalData } = require('./models');
 const Redis = require('ioredis');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+app.use(helmet());
+app.use(compression());
+app.use(rateLimit({ windowMs: 60_000, max: 120 })); // 120 req/menit/IP
 
 // ===== In-memory caches =====
 let cachedNews = [];
@@ -56,6 +63,33 @@ sequelize.sync().then(() => {
 
 // ===== Helpers =====
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function sendWithETag(req, res, payload, maxAgeSec = 30) {
+  const body = JSON.stringify(payload);
+  const etag = crypto.createHash('md5').update(body).digest('hex');
+  res.set('ETag', etag);
+  res.set('Cache-Control', `public, max-age=${maxAgeSec}, stale-while-revalidate=60`);
+  if (req.headers['if-none-match'] === etag) return res.status(304).end();
+  return res.json(payload);
+}
+
+function makeNewsCacheKey({ lang, category, search, page, limit, fields }) {
+  const f = (fields || '').split(',').map(s => s.trim()).sort().join('|');
+  const c = category || 'all';
+  const s = (search || '').trim();
+  const qhash = crypto.createHash('md5').update(s).digest('hex');
+  return `news:list:${lang}:cat:${c}:q:${qhash}:p:${page}:l:${limit}:f:${f}`;
+}
+
+const NEWS_ALLOWED_FIELDS = new Set([
+  'id','title','link','image','category','date','summary','detail','language','createdAt'
+]);
+function normalizeFields(fields) {
+  if (!fields) return null; // null = semua kolom (kompatibel)
+  const arr = fields.split(',').map(s => s.trim()).filter(Boolean);
+  const picked = arr.filter(f => NEWS_ALLOWED_FIELDS.has(f));
+  return picked.length ? picked : ['id','title','link','image','category','date','createdAt'];
+}
 
 async function retryRequest(fn, retries = 3, delayMs = 500) {
   try {
@@ -701,51 +735,141 @@ setInterval(scrapeCalendar, 60 * 60 * 1000); // 1 jam
 // setInterval(scrapeQuotes, 0.15 * 60 * 1000); // 9 detik
 
 // ===== API =====
+// ===== NEWS (EN) - paginated, fields, Redis cache, ETag =====
 app.get('/api/news', async (req, res) => {
-  const { category = 'all', search = '' } = req.query;
-  const { Op } = require('sequelize');
-
   try {
+    const { category = 'all', search = '', page = '1', limit = '500', fields = '' } = req.query;
+
+    const p = Math.max(parseInt(page, 10) || 1, 1);
+    const l = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 500);
+    const attrs = normalizeFields(fields);
+
+    const { Op } = require('sequelize');
     const where = { language: 'en' };
     if (category !== 'all') where.category = { [Op.like]: `%${category}%` };
     if (search) {
       where[Op.or] = [
-        { title: { [Op.like]: `%${search}%` } },
+        { title:   { [Op.like]: `%${search}%` } },
         { summary: { [Op.like]: `%${search}%` } },
-        { detail: { [Op.like]: `%${search}%` } },
+        { detail:  { [Op.like]: `%${search}%` } },
       ];
     }
 
-    const results = await News.findAll({ where, order: [['createdAt', 'DESC']] });
+    const cacheKey = makeNewsCacheKey({
+      lang: 'en', category, search, page: p, limit: l, fields: attrs?.join(',')
+    });
+    const cached = await redis.get(cacheKey);
+    if (cached) return sendWithETag(req, res, JSON.parse(cached), 30);
 
-    res.json({ status: 'success', total: results.length, data: results });
+    const { rows, count } = await News.findAndCountAll({
+      where,
+      attributes: attrs || undefined,
+      order: [['createdAt', 'DESC']],
+      limit: l,
+      offset: (p - 1) * l,
+    });
+
+    const payload = { status: 'success', page: p, perPage: l, total: count, data: rows };
+    await redis.set(cacheKey, JSON.stringify(payload), 'EX', 45); // TTL 45 detik
+
+    return sendWithETag(req, res, payload, 30);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('❌ /api/news error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-app.get('/api/news-id', async (req, res) => {
-  const { category = 'all', search = '' } = req.query;
-  const { Op } = require('sequelize');
 
+// ===== NEWS (ID) - paginated, fields, Redis cache, ETag =====
+app.get('/api/news-id', async (req, res) => {
   try {
+    const { category = 'all', search = '', page = '1', limit = '500', fields = '' } = req.query;
+
+    const p = Math.max(parseInt(page, 10) || 1, 1);
+    const l = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 500);
+    const attrs = normalizeFields(fields);
+
+    const { Op } = require('sequelize');
     const where = { language: 'id' };
     if (category !== 'all') where.category = { [Op.like]: `%${category}%` };
     if (search) {
       where[Op.or] = [
-        { title: { [Op.like]: `%${search}%` } },
+        { title:   { [Op.like]: `%${search}%` } },
         { summary: { [Op.like]: `%${search}%` } },
-        { detail: { [Op.like]: `%${search}%` } },
+        { detail:  { [Op.like]: `%${search}%` } },
       ];
     }
 
-    const results = await News.findAll({ where, order: [['createdAt', 'DESC']] });
+    const cacheKey = makeNewsCacheKey({
+      lang: 'id', category, search, page: p, limit: l, fields: attrs?.join(',')
+    });
+    const cached = await redis.get(cacheKey);
+    if (cached) return sendWithETag(req, res, JSON.parse(cached), 30);
 
-    res.json({ status: 'success', total: results.length, data: results });
+    const { rows, count } = await News.findAndCountAll({
+      where,
+      attributes: attrs || undefined,
+      order: [['createdAt', 'DESC']],
+      limit: l,
+      offset: (p - 1) * l,
+    });
+
+    const payload = { status: 'success', page: p, perPage: l, total: count, data: rows };
+    await redis.set(cacheKey, JSON.stringify(payload), 'EX', 45);
+
+    return sendWithETag(req, res, payload, 30);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('❌ /api/news-id error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ===== NEWS DETAIL by ID (ambil summary/detail saat dibuka) =====
+app.get('/api/news/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+
+    const cacheKey = `news:item:${id}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) return sendWithETag(req, res, JSON.parse(cached), 120);
+
+    const row = await News.findByPk(id);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+
+    const payload = { status: 'success', data: row };
+    await redis.set(cacheKey, JSON.stringify(payload), 'EX', 120); // 2 menit
+
+    return sendWithETag(req, res, payload, 120);
+  } catch (err) {
+    console.error('❌ /api/news/:id error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/news-id/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+
+    const cacheKey = `news:item:${id}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) return sendWithETag(req, res, JSON.parse(cached), 120);
+
+    const row = await News.findByPk(id);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+
+    const payload = { status: 'success', data: row };
+    await redis.set(cacheKey, JSON.stringify(payload), 'EX', 120); // 2 menit
+
+    return sendWithETag(req, res, payload, 120);
+  } catch (err) {
+    console.error('❌ /api/news/:id error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 
 app.get('/api/calendar', async (req, res) => {
   try {
