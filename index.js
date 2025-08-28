@@ -100,7 +100,6 @@ async function retryRequest(fn, retries = 3, delayMs = 500) {
     return retryRequest(fn, retries - 1, delayMs * 2);
   }
 }
-
 // Header ala browser supaya lolos WAF/CDN
 const HTML_HEADERS = {
   'User-Agent':
@@ -113,6 +112,22 @@ const HTML_HEADERS = {
   'Upgrade-Insecure-Requests': '1',
   'DNT': '1',
 };
+
+// Header ala browser supaya lolos WAF/CDN
+function makeHtmlHeaders(lang = 'en') {
+  const isID = (lang || '').toLowerCase() === 'id';
+  return {
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': isID ? 'id-ID,id;q=1,en;q=0.5' : 'en-US,en;q=1,id;q=0.5',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'DNT': '1',
+  };
+}
 
 function isWafOrChallenge($) {
   const t = $.text().toLowerCase();
@@ -131,13 +146,17 @@ function normalizeSpace(s) {
   return (s || '').replace(/\s+/g, ' ').trim();
 }
 
-function extractNewsItem($, el) {
+function extractNewsItem($, el, lang = 'en') {
   const $el = $(el);
   const title = normalizeSpace($el.find('h5.card-title a').text());
-  const href = $el.find('h5.card-title a').attr('href');
-  const link = href ? 'https://www.newsmaker.id' + href : null;
-  const imgSrc = $el.find('img.card-img').attr('src');
-  const image = imgSrc ? 'https://www.newsmaker.id' + imgSrc : null;
+  const href  = $el.find('h5.card-title a').attr('href') || '';
+  const link  = href ? 'https://www.newsmaker.id' + href : null;
+
+  // skip kalau link ga sesuai segment bahasa
+  if (!link || !link.includes(`/index.php/${lang}/`)) return null;
+
+  const imgSrc   = $el.find('img.card-img').attr('src');
+  const image    = imgSrc ? 'https://www.newsmaker.id' + imgSrc : null;
   const category = normalizeSpace($el.find('span.category-label').text());
 
   let date = '';
@@ -148,7 +167,6 @@ function extractNewsItem($, el) {
     else if (!summary) summary = text;
   });
 
-  // jangan skip hanya karena summary kosong; minimal title & link
   if (!title || !link) return null;
   return { title, link, image, category, date, summary };
 }
@@ -194,11 +212,11 @@ const newsCategories = [
   'analysis/analysis-opinion',
 ];
 
-async function fetchNewsDetailSafe(url) {
+async function fetchNewsDetailSafe(url, lang = 'en') {
   return retryRequest(async () => {
     const { data } = await axios.get(url, {
-      timeout: 180000, // 3 menit
-      headers: HTML_HEADERS,
+      timeout: 180000,
+      headers: makeHtmlHeaders(lang),
       maxRedirects: 3,
     });
     const $ = cheerio.load(data);
@@ -213,15 +231,21 @@ async function fetchNewsDetailSafe(url) {
   }, 3, 1000);
 }
 
+function looksIndonesian(s = '') {
+  const t = (s || '').toLowerCase();
+  const hits = (t.match(/\b(dan|yang|akan|dari|pada|dengan|sebagai)\b/g) || []).length;
+  const anti = (t.match(/\b(the|and|of|for|with|as|to)\b/g) || []).length;
+  return hits >= anti;
+}
+
 const MAX_PAGES_PER_CAT = 200;
 const PAGE_SIZE = 10;
 const MAX_PAGE_EMPTY_STREAK = 3;
 
 // Core: scrape per bahasa (anti-duplikat + no-skip + pagination aman)
 async function scrapeNewsByLang(lang = 'en') {
-  console.log(`🚀 Scraping news (${lang}) with de-dup & no-skip...`);
+  console.log(`🚀 Scraping news (${lang})...`);
 
-  // Ambil link yang sudah ada di DB untuk bahasa ini
   const { Op } = require('sequelize');
   const existing = await News.findAll({
     where: { language: lang },
@@ -229,138 +253,88 @@ async function scrapeNewsByLang(lang = 'en') {
     raw: true,
   });
   const existingLinks = new Set(existing.map((r) => r.link));
-  const seenLinks = new Set(); // de-dup di sesi ini
+  const seenLinks = new Set();
   const allNewItems = [];
 
   for (const cat of newsCategories) {
     let start = 0;
     let emptyStreak = 0;
-    let pageCount = 0;
 
-    while (pageCount < MAX_PAGES_PER_CAT) {
+    while (true) {
       const url = `https://www.newsmaker.id/index.php/${lang}/${cat}?start=${start}`;
       try {
         const { data } = await retryRequest(
-          () =>
-            axios.get(url, {
-              timeout: 180000,
-              headers: HTML_HEADERS,
-              maxRedirects: 3,
-            }),
+          () => axios.get(url, { timeout: 180000, headers: makeHtmlHeaders(lang), maxRedirects: 3 }),
           3,
           1000
         );
 
         const $ = cheerio.load(data);
         if (isWafOrChallenge($)) {
-          console.warn(`🛡️ WAF/Challenge terdeteksi di list page: ${url}`);
-          // anggap kosong agar tidak infinite loop
+          console.warn(`🛡️ Blocked page: ${url}`);
           emptyStreak++;
-          if (emptyStreak >= MAX_PAGE_EMPTY_STREAK) break;
+          if (emptyStreak >= 3) break;
           start += PAGE_SIZE;
-          pageCount++;
-          await delay(200);
           continue;
         }
 
         const items = [];
         $('div.single-news-item').each((_, el) => {
-          const item = extractNewsItem($, el);
+          const item = extractNewsItem($, el, lang);
           if (item) items.push(item);
         });
 
-        const foundCount = items.length;
-        const wouldBeInDb = items.filter((it) => existingLinks.has(it.link)).length;
-        const wouldBeDup = items.filter((it) => seenLinks.has(it.link)).length;
-
-        // filter fresh
         const fresh = items.filter(
           (it) => !existingLinks.has(it.link) && !seenLinks.has(it.link)
         );
         fresh.forEach((it) => seenLinks.add(it.link));
 
-        console.log(
-          `${cat} [${lang}] start=${start} → found=${foundCount}, inDB=${wouldBeInDb}, dupSession=${wouldBeDup}, fresh=${fresh.length}`
-        );
-
         if (fresh.length === 0) {
           emptyStreak++;
-          if (emptyStreak >= MAX_PAGE_EMPTY_STREAK) break;
+          if (emptyStreak >= 3) break;
         } else {
           emptyStreak = 0;
-          // ambil detail dgn paralel terbatas
           const detailTasks = fresh.map((it) => async () => {
-            const detail = await fetchNewsDetailSafe(it.link);
+            const detail = await fetchNewsDetailSafe(it.link, lang);
             return { ...it, detail: detail?.text || '' };
           });
-          const detailed = (await runParallelWithLimit(detailTasks, 4)).filter(Boolean);
+          let detailed = (await runParallelWithLimit(detailTasks, 4)).filter(Boolean);
+
+          // filter bahasa meleset saat scraping id
+          if (lang === 'id') {
+            detailed = detailed.filter((n) => looksIndonesian(n.detail || n.summary || n.title));
+          }
+
           allNewItems.push(...detailed);
         }
 
         start += PAGE_SIZE;
-        pageCount++;
-        await delay(120); // santun
+        await delay(120);
       } catch (e) {
         console.warn(`⚠️ Gagal ambil halaman: ${url} | ${e.message}`);
         emptyStreak++;
-        if (emptyStreak >= MAX_PAGE_EMPTY_STREAK) break;
+        if (emptyStreak >= 3) break;
         start += PAGE_SIZE;
-        pageCount++;
         await delay(300);
       }
     }
   }
 
   if (allNewItems.length > 0) {
-    try {
-      await News.bulkCreate(
-        allNewItems.map((n) => ({
-          title: n.title,
-          link: n.link,
-          image: n.image,
-          category: n.category,
-          date: n.date,
-          summary: n.summary,
-          detail: n.detail || '',
-          language: lang,
-        })),
-        { ignoreDuplicates: true } // efektif jika ada unique index (link) atau (link, language)
-      );
-      console.log(`✅ [${lang}] Saved to DB: ${allNewItems.length} rows (ignoreDuplicates)`);
-    } catch (err) {
-      console.error(`❌ [${lang}] bulkCreate failed: ${err.message}`);
-      // fallback upsert per item
-      for (const n of allNewItems) {
-        try {
-          await News.upsert({
-            title: n.title,
-            link: n.link,
-            image: n.image,
-            category: n.category,
-            date: n.date,
-            summary: n.summary,
-            detail: n.detail || '',
-            language: lang,
-          });
-        } catch (e) {
-          console.error(`❌ upsert gagal untuk ${n.link}: ${e.message}`);
-        }
-      }
-    }
-  }
-
-  if (lang === 'en') {
-    cachedNews = allNewItems;
-    lastUpdatedNews = new Date();
-    const keys = await redis.keys('news:*');
-    if (keys.length) await redis.del(...keys);
-    console.log(`✅ News EN updated (${cachedNews.length} items)`);
-  } else {
-    cachedNewsID = allNewItems;
-    lastUpdatedNewsID = new Date();
-    const keys = await redis.keys('newsID:*');
-    if (keys.length) await redis.del(...keys);
-    console.log(`✅ News ID updated (${cachedNewsID.length} items)`);
+    await News.bulkCreate(
+      allNewItems.map((n) => ({
+        title: n.title,
+        link: n.link,
+        image: n.image,
+        category: n.category,
+        date: n.date,
+        summary: n.summary,
+        detail: n.detail || '',
+        language: lang,
+      })),
+      { ignoreDuplicates: true }
+    );
+    console.log(`✅ Saved ${allNewItems.length} items [${lang}]`);
   }
 }
 
