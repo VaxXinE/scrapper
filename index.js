@@ -10,6 +10,8 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
+const NodeCache = require('node-cache');
+const { XMLParser } = require('fast-xml-parser');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -199,6 +201,102 @@ async function withLock(lockKey, ttlSec, fn) {
     try { await redis.del(lockKey); } catch {}
   }
 }
+
+// ====== YT SHORTS HELPERS ======
+const ytCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+
+function ytBuildFeedUrl({ channelId, user, playlistId }) {
+  if (channelId) return `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+  if (user) return `https://www.youtube.com/feeds/videos.xml?user=${user}`;
+  if (playlistId) return `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`;
+  return null;
+}
+
+// Resolve @handle -> channelId by scraping channel page
+async function ytResolveHandleToChannelId(handleRaw) {
+  const handle = (handleRaw || '').startsWith('@') ? handleRaw.slice(1) : String(handleRaw || '').trim();
+  if (!handle) throw new Error('Handle kosong');
+
+  const url = `https://www.youtube.com/@${handle}`;
+  const cacheKey = `yt:handle2cid:${handle}`;
+  const memHit = ytCache.get(cacheKey);
+  if (memHit) return memHit;
+
+  const resp = await axios.get(url, {
+    timeout: 15000,
+    headers: HTML_HEADERS,        // pakai header yang sudah ada agar lolos WAF
+    maxRedirects: 2,
+    responseType: 'text',
+  });
+
+  const html = resp.data || '';
+  let m = html.match(/"channelId"\s*:\s*"(?<cid>UC[0-9A-Za-z_-]{20,})"/);
+  if (!m || !m.groups?.cid) {
+    const b = html.match(/"browseId"\s*:\s*"(?<cid>UC[0-9A-Za-z_-]{20,})"/);
+    if (!b || !b.groups?.cid) throw new Error('Gagal menemukan channelId dari handle');
+    m = b;
+  }
+  const cid = m.groups.cid;
+  ytCache.set(cacheKey, cid, 3600);
+  return cid;
+}
+
+// Parse RSS, dukung yt:duration@seconds atau media:content@duration
+function ytExtractShorts(xml, { maxDuration = 61, guessShortsIfNoDuration = true } = {}) {
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', removeNSPrefix: false });
+  const json = parser.parse(xml || '');
+
+  const feed = json?.feed || {};
+  const entries = Array.isArray(feed.entry) ? feed.entry : feed.entry ? [feed.entry] : [];
+
+  const list = entries.map((e) => {
+    const videoId = e['yt:videoId'];
+    const title = typeof e.title === 'string' ? e.title : e.title?.['#text'] || '';
+    const link = (Array.isArray(e.link) ? e.link.find(l => l['@_rel'] === 'alternate') : e.link)?.['@_href']
+      || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '');
+    const mg = e['media:group'] || {};
+    const thumb = (Array.isArray(mg['media:thumbnail']) ? mg['media:thumbnail'][0] : mg['media:thumbnail'])?.['@_url'] || null;
+
+    // durasi 1) yt:duration@seconds
+    let durationSeconds = mg['yt:duration']?.['@_seconds'] != null ? Number(mg['yt:duration']['@_seconds']) : null;
+    // durasi 2) media:content@duration
+    if (durationSeconds == null) {
+      const mc = Array.isArray(mg['media:content']) ? mg['media:content'][0] : mg['media:content'];
+      const alt = mc?.['@_duration'] != null ? Number(mc['@_duration']) : null;
+      if (Number.isFinite(alt)) durationSeconds = alt;
+    }
+    if (!Number.isFinite(durationSeconds)) durationSeconds = null;
+
+    const description = typeof mg['media:description'] === 'string'
+      ? mg['media:description']
+      : mg['media:description']?.['#text'] || '';
+
+    const looksLikeShorts = /#shorts/i.test(`${title} ${description}`) || /\/shorts\//i.test(link);
+
+    return {
+      videoId,
+      title,
+      url: link,
+      publishedAt: e.published,
+      thumbnail: thumb,
+      durationSeconds,
+      looksLikeShorts,
+    };
+  }).filter((it) => {
+    if (it.durationSeconds != null) return it.durationSeconds <= maxDuration;
+    return guessShortsIfNoDuration ? it.looksLikeShorts : false;
+  });
+
+  return {
+    meta: {
+      title: feed?.title ?? null,
+      author: feed?.author?.name ?? null,
+      total: list.length,
+    },
+    items: list,
+  };
+}
+
 
 // ====== NEWS ======
 const newsCategories = [
@@ -873,19 +971,21 @@ app.get('/api/calendar', async (req, res) => {
 app.get('/api/historical', async (req, res) => {
   try {
     const { QueryTypes } = require('sequelize');
-
     const tableName = HistoricalData.getTableName().toString();
 
-    // 1) Urutkan daftar symbol berdasarkan tanggal terbaru masing-masing
+    // ✅ FIX: pakai subquery agar bebas ORDER BY alias agregat
     const orderedSymbols = await sequelize.query(
       `
-      SELECT
-        symbol,
-        MAX(STR_TO_DATE(\`date\`, '%d %b %Y')) AS latestDate,
-        MAX(updatedAt) AS updatedAtMax
-      FROM \`${tableName}\`
-      GROUP BY symbol
-      ORDER BY latestDate IS NULL, latestDate DESC, updatedAtMax DESC
+      SELECT symbol, latestDate, updatedAtMax
+      FROM (
+        SELECT
+          symbol,
+          MAX(STR_TO_DATE(\`date\`, '%d %b %Y')) AS latestDate,
+          MAX(updatedAt) AS updatedAtMax
+        FROM \`${tableName}\`
+        GROUP BY symbol
+      ) AS t
+      ORDER BY (latestDate IS NULL), latestDate DESC, updatedAtMax DESC
       `,
       { type: QueryTypes.SELECT }
     );
@@ -897,14 +997,18 @@ app.get('/api/historical', async (req, res) => {
       });
     }
 
-    // 2) Ambil data per symbol (urut dari tanggal paling baru)
+    // Ambil data per symbol, urutkan: yang tanggalnya valid dulu, baru by date desc, lalu updatedAt
     const allData = [];
     for (const row of orderedSymbols) {
       const symbol = row.symbol;
 
       const rows = await HistoricalData.findAll({
         where: { symbol },
-        order: [[sequelize.literal("STR_TO_DATE(`date`, '%d %b %Y')"), 'DESC']],
+        order: [
+          [sequelize.literal("(STR_TO_DATE(`date`, '%d %b %Y') IS NULL)"), 'ASC'],
+          [sequelize.literal("STR_TO_DATE(`date`, '%d %b %Y')"), 'DESC'],
+          ['updatedAt', 'DESC'],
+        ],
         raw: true,
       });
 
@@ -931,7 +1035,7 @@ app.get('/api/historical', async (req, res) => {
 app.get('/api/quotes', async (req, res) => {
   try {
     const url =
-      'https://www.newsmaker.id/quotes/live?s=LGD+LSI+GHSIQ5+LCOPV5+SN1U5+DJIA+DAX+DX+AUDUSD+EURUSD+GBPUSD+CHF+JPY+RP';
+      'https://www.newsmaker.id/quotes/live?s=LGD+LSI+GHSIU5+LCOPX5+SN1U5+DJIA+DAX+DX+AUDUSD+EURUSD+GBPUSD+CHF+JPY+RP';
 
     // Always fetch fresh from source (no cache usage)
     const { data } = await axios.get(url, { timeout: 15000 });
@@ -987,6 +1091,88 @@ app.get('/api/quotes', async (req, res) => {
       message: 'Failed to fetch live quotes',
       detail: err.message,
     });
+  }
+});
+
+app.get('/api/shorts', async (req, res) => {
+  try {
+    let { handle, channelId, user, playlistId } = req.query;
+    const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
+    const maxDuration = Math.max(parseInt(req.query.maxDuration, 10) || 61, 1);
+    const guess = String(req.query.guess || '1') === '1';
+    const cacheTtl = parseInt(req.query.cacheTtl, 10) || 300;
+
+    if (!handle && !channelId && !user && !playlistId) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Sertakan salah satu: handle / channelId / user / playlistId',
+        example: '/api/shorts?handle=NewsMaker23&limit=15&guess=1',
+      });
+    }
+
+    // Resolve handle -> channelId jika perlu
+    if (handle && !channelId) {
+      channelId = await ytResolveHandleToChannelId(handle);
+    }
+
+    const feedUrl = ytBuildFeedUrl({ channelId, user, playlistId });
+    if (!feedUrl) return res.status(400).json({ ok: false, error: 'Parameter tidak valid' });
+
+    const rKey = `yt:shorts:${feedUrl}:max${maxDuration}:guess${guess ? 1 : 0}`;
+    const memHit = ytCache.get(rKey);
+    if (memHit) {
+      return sendWithETag(req, res, {
+        ok: true,
+        source: 'cache-mem',
+        feedUrl,
+        count: Math.min(memHit.items.length, limit),
+        meta: memHit.meta,
+        data: memHit.items.slice(0, limit),
+      }, 60);
+    }
+
+    // Coba Redis
+    try {
+      const r = await redis.get(rKey);
+      if (r) {
+        const parsed = JSON.parse(r);
+        ytCache.set(rKey, parsed, cacheTtl); // hydrate RAM
+        return sendWithETag(req, res, {
+          ok: true,
+          source: 'cache-redis',
+          feedUrl,
+          count: Math.min(parsed.items.length, limit),
+          meta: parsed.meta,
+          data: parsed.items.slice(0, limit),
+        }, 60);
+      }
+    } catch (e) {
+      console.warn('⚠️ Redis get error (shorts):', e.message);
+    }
+
+    // Fetch fresh
+    const { data: xml } = await axios.get(feedUrl, { timeout: 15000, responseType: 'text' });
+    const parsed = ytExtractShorts(xml, { maxDuration, guessShortsIfNoDuration: guess });
+
+    // Simpan cache
+    ytCache.set(rKey, parsed, cacheTtl);
+    try {
+      await redis.set(rKey, JSON.stringify(parsed), 'EX', cacheTtl);
+    } catch (e) {
+      console.warn('⚠️ Redis set error (shorts):', e.message);
+    }
+
+    return sendWithETag(req, res, {
+      ok: true,
+      source: 'live',
+      feedUrl,
+      count: Math.min(parsed.items.length, limit),
+      meta: parsed.meta,
+      data: parsed.items.slice(0, limit),
+    }, 60);
+  } catch (err) {
+    console.error('❌ /api/shorts error:', err.message);
+    res.status(500).json({ ok: false, error: 'Internal server error', detail: err.message });
   }
 });
 
