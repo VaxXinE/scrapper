@@ -64,6 +64,102 @@ sequelize.sync().then(() => {
 })();
 
 // ===== Helpers =====
+
+const MONTHS_EN = {
+  jan: 0, january: 0,
+  feb: 1, february: 1,
+  mar: 2, march: 2,
+  apr: 3, april: 3,
+  may: 4,
+  jun: 5, june: 5,
+  jul: 6, july: 6,
+  aug: 7, august: 7,
+  sep: 8, sept: 8, september: 8,
+  oct: 9, october: 9,
+  nov: 10, november: 10,
+  dec: 11, december: 11,
+};
+
+const MONTHS_ID = {
+  jan: 0, januari: 0,
+  feb: 1, februari: 1,
+  mar: 2, maret: 2,
+  apr: 3, april: 3,
+  mei: 4,
+  jun: 5, juni: 5,
+  jul: 6, juli: 6,
+  agu: 7, agustus: 7, agst: 7,
+  sep: 8, september: 8,
+  okt: 9, oktober: 9,
+  nov: 10, november: 10,
+  des: 11, desember: 11,
+};
+
+function parsePublishedAt(dateStr = '', lang = 'en') {
+  const s = String(dateStr).trim().replace(/\s+/g, ' ');
+  if (!s) return null;
+
+  // Dukung "12 September 2025" ATAU "12 September 2025 08:38"
+  const m = s.match(/^(\d{1,2})\s+([A-Za-z\.]+)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+  if (!m) return null;
+
+  const day = parseInt(m[1], 10);
+  const monRaw = m[2].toLowerCase().replace(/\./g, '');
+  const year = parseInt(m[3], 10);
+  const hourLocal = m[4] ? parseInt(m[4], 10) : 12; // default jam siang biar netral
+  const minuteLocal = m[5] ? parseInt(m[5], 10) : 0;
+
+  const map = (lang || '').toLowerCase() === 'id' ? MONTHS_ID : MONTHS_EN;
+  const altMap = map === MONTHS_ID ? MONTHS_EN : MONTHS_ID;
+
+  let month = map[monRaw];
+  if (month == null) month = altMap[monRaw];
+
+  if (month == null || !Number.isFinite(day) || !Number.isFinite(year)) return null;
+
+  // Input dari situs = WIB (UTC+7) -> konversi ke UTC
+  const WIB_OFFSET = 7; // jam
+  const dtUtc = new Date(Date.UTC(year, month, day, hourLocal - WIB_OFFSET, minuteLocal, 0));
+
+  return Number.isNaN(+dtUtc) ? null : dtUtc;
+}
+
+
+
+
+function buildNewsRow(n) {
+  const pub =
+    (n.publishedAt instanceof Date && !Number.isNaN(+n.publishedAt))
+      ? n.publishedAt
+      : parsePublishedAt(n.date, n.language || 'en'); // ← parse dari kolom "date"
+
+  const row = {
+    title: n.title,
+    link: n.link,
+    image: n.image,
+    category: n.category,
+    date: n.date,
+    summary: n.summary,
+    detail: n.detail || '',
+    language: n.language || 'en',
+
+    source_name: n.sourceName || 'Newsmaker23',
+    source_url:  n.link,
+    author:      n.author || null,
+    author_name: n.author_name || toAuthorName(n.author),
+
+    // 🔴 TIGA KOLOM YANG KAMU MAU SAMA DENGAN "date"
+    published_at: pub || null,
+    createdAt:    pub || null,
+    updatedAt:    pub || null,
+  };
+
+  return row;
+}
+
+
+
+
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function sendWithETag(req, res, payload, maxAgeSec = 30) {
@@ -84,13 +180,163 @@ function makeNewsCacheKey({ lang, category, search, page, limit, fields }) {
 }
 
 const NEWS_ALLOWED_FIELDS = new Set([
-  'id','title','link','image','category','date','summary','detail','language','createdAt'
+  'id','title','link','image','category','date','summary','detail','language','createdAt',
+  'source_name','source_url','author','author_name','published_at' // ← tambah author_name
 ]);
 function normalizeFields(fields) {
-  if (!fields) return null; // null = semua kolom (kompatibel)
+  if (!fields) return null; // null = semua kolom
   const arr = fields.split(',').map(s => s.trim()).filter(Boolean);
   const picked = arr.filter(f => NEWS_ALLOWED_FIELDS.has(f));
-  return picked.length ? picked : ['id','title','link','image','category','date','createdAt'];
+  return picked.length ? picked : [
+  'id','title','link','image','category','date','summary','detail','language','createdAt',
+  'source_name','source_url','author','author_name','published_at' // ← tambah author_name
+  ];
+}
+
+function normalizeSpace(s) {
+  return (s || '').replace(/\s+/g, ' ').trim();
+}
+
+// ===== AUTHOR VALIDATION (refactor) =====
+
+// 1) daftar inisial yang kita izinkan (whitelist) — huruf kecil semua
+const AUTHOR_ALLOW = new Set([
+  'cp','ayu','az','azf','yds','arl','alg','mrv'
+]);
+
+// 2) kata/akronim yang sering ke-detect tapi BUKAN author
+const AUTHOR_BLACKLIST = new Set([
+  'wti','brent','fed','ecb','boj','pboc','fomc','cpi','pmi','gdp','usd','eur','jpy','ppi','nfp','iea','opec','ath','dxy',
+  'hkex','hsi','dax','stoxx','spx','ndx','vix','tsx','nifty','sensex','eia','api','bnb','ada','sol','xrp','dot','doge',
+  'tlt','ust','imf','wto','who','un','eu','uk','us','id','sg','my','th','vn','ph',
+  'ai','ml','nlp','fx','ipo','yoy','mom','qoq',
+  'bps','sep','boe','boc','rba','rbnz','bcb','ihk','ihp','ihsg','wib','wita','wit','ttm','ytd','q1','q2','q3','q4',
+  'bri','bni','btn','bsi','bca','cimb','ocbc','uob','dbs',
+  'rabu','kamis','jumat','sabtu','minggu','senin','selasa',
+  'news','newsmaker','source','sumber','editor','desk'
+]);
+
+// 3) alias salah-ketik → inisial valid (semua output huruf kecil)
+const AUTHOR_ALIASES = {
+  'cp':'cp', 'cP':'cp', 'CP':'cp',
+  'ayu':'ayu','ayiu':'ayu','ayi':'ayu','ay':'ayu','ads':'ayu',
+  'az':'az','azf':'azf',
+  'yds':'yds',
+  'arl':'arl',
+  'alg':'alg',
+  'mrv':'mrv'
+};
+
+// 4) peta inisial → nama lengkap (dipakai API)
+const AUTHOR_NAME_MAP = {
+  cp:  'Broto',
+  ayu: 'Ayu',
+  az:  'Nova',
+  azf: 'Nova',
+  yds: 'Yudis',
+  arl: 'Arul',
+  alg: 'Burhan',
+  mrv: 'Marvy',
+};
+
+// normalisasi & validasi inisial
+function normalizeAuthorInitial(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim();
+
+  // ambil pola paling umum: (xxx) atau teks polos "xxx"
+  const paren = s.match(/\(([a-z]{2,6})\)/i);
+  if (paren) s = paren[1];
+
+  s = s.toLowerCase();
+
+  // mapping typo → inisial
+  if (AUTHOR_ALIASES[s]) s = AUTHOR_ALIASES[s];
+
+  // hanya huruf a-z 2–6
+  if (!/^[a-z]{2,6}$/.test(s)) return null;
+
+  // drop jika di blacklist
+  if (AUTHOR_BLACKLIST.has(s)) return null;
+
+  // wajib terdaftar di whitelist
+  if (!AUTHOR_ALLOW.has(s)) return null;
+
+  return s;
+}
+
+function toAuthorName(initial) {
+  const key = (initial || '').toLowerCase();
+  return AUTHOR_NAME_MAP[key] || null;
+}
+
+// Ekstraksi dari HTML: cari (xxx) terdekat
+function extractAuthorFromHtml(html = '') {
+  const m = String(html).match(/\(([a-z]{2,6})\)/i);
+  return normalizeAuthorInitial(m ? m[1] : null);
+}
+
+// Ekstraksi dari teks plain
+function extractAuthorFromText(raw = '') {
+  const m = String(raw).match(/\(([a-z]{2,6})\)/i);
+  return normalizeAuthorInitial(m ? m[1] : null);
+}
+
+function sanitizeAuthor(raw) {
+  if (!raw) return null;
+  let s = String(raw).trim().toLowerCase();
+
+  // ambil hanya huruf a-z, panjang 2–6 (gaya inisial newsroom)
+  const m = s.match(/^[a-z]{2,6}$/i);
+  if (!m) return null;
+  s = m[0].toLowerCase();
+
+  // mapping typo → alias
+  if (AUTHOR_ALIASES[s]) s = AUTHOR_ALIASES[s];
+
+  // buang kalau termasuk blacklist
+  if (AUTHOR_BLACKLIST.has(s)) return null;
+
+  return s;
+}
+
+function extractSourceNameFromHtml(html = '') {
+  // dukung "Source:" dan "Sumber:"
+  const m = String(html).match(/\b(?:Source|Sumber)\s*:?\s*([^<\n\r]+)/i);
+  return m ? m[1].trim() : null;
+}
+
+function extractNewsItem($, el, lang = 'en') {
+  const $el = $(el);
+  const title = normalizeSpace($el.find('h5.card-title a').text());
+  const href = $el.find('h5.card-title a').attr('href') || '';
+  const link = href ? 'https://www.newsmaker.id' + href : null;
+
+  if (!link || !link.includes(`/index.php/${lang}/`)) return null;
+
+  const imgSrc = $el.find('img.card-img').attr('src');
+  const image = imgSrc ? 'https://www.newsmaker.id' + imgSrc : null;
+  const category = normalizeSpace($el.find('span.category-label').text());
+
+  let date = '';
+  let summary = '';
+  $el.find('p.card-text').each((_, p) => {
+    const text = normalizeSpace($(p).text());
+    if (/\b\d{1,2}\s+\w+\s+\d{4}\b/i.test(text)) date = text;
+    else if (!summary) summary = text;
+  });
+
+  // fallback author dari summary (mis. "(ayu)") – di mana saja
+  let author = extractAuthorFromText(summary);
+  if (author) {
+    summary = summary.replace(/\(([a-z]{2,8})\)/i, '').trim();
+  }
+
+  // published date wajib
+  const publishedAt = parsePublishedAt(date, lang) || null;
+
+  if (!title || !link) return null;
+  return { title, link, image, category, date, summary, author: author || null, publishedAt };
 }
 
 async function retryRequest(fn, retries = 3, delayMs = 500) {
@@ -115,7 +361,6 @@ const HTML_HEADERS = {
   'DNT': '1',
 };
 
-// Header ala browser supaya lolos WAF/CDN
 function makeHtmlHeaders(lang = 'en') {
   const isID = (lang || '').toLowerCase() === 'id';
   return {
@@ -144,35 +389,6 @@ function isWafOrChallenge($) {
   );
 }
 
-function normalizeSpace(s) {
-  return (s || '').replace(/\s+/g, ' ').trim();
-}
-
-function extractNewsItem($, el, lang = 'en') {
-  const $el = $(el);
-  const title = normalizeSpace($el.find('h5.card-title a').text());
-  const href  = $el.find('h5.card-title a').attr('href') || '';
-  const link  = href ? 'https://www.newsmaker.id' + href : null;
-
-  // skip kalau link ga sesuai segment bahasa
-  if (!link || !link.includes(`/index.php/${lang}/`)) return null;
-
-  const imgSrc   = $el.find('img.card-img').attr('src');
-  const image    = imgSrc ? 'https://www.newsmaker.id' + imgSrc : null;
-  const category = normalizeSpace($el.find('span.category-label').text());
-
-  let date = '';
-  let summary = '';
-  $el.find('p.card-text').each((_, p) => {
-    const text = normalizeSpace($(p).text());
-    if (/\b\d{1,2}\s+\w+\s+\d{4}\b/i.test(text)) date = text;
-    else if (!summary) summary = text;
-  });
-
-  if (!title || !link) return null;
-  return { title, link, image, category, date, summary };
-}
-
 // Batching paralel terbatas (untuk fetch detail, dsb)
 async function runParallelWithLimit(tasks, limit = 3) {
   const results = [];
@@ -198,7 +414,7 @@ async function withLock(lockKey, ttlSec, fn) {
   try {
     await fn();
   } finally {
-    try { await redis.del(lockKey); } catch {}
+    try { await redis.del(lockKey); } catch { }
   }
 }
 
@@ -224,7 +440,7 @@ async function ytResolveHandleToChannelId(handleRaw) {
 
   const resp = await axios.get(url, {
     timeout: 15000,
-    headers: HTML_HEADERS,        // pakai header yang sudah ada agar lolos WAF
+    headers: HTML_HEADERS,
     maxRedirects: 2,
     responseType: 'text',
   });
@@ -257,9 +473,7 @@ function ytExtractShorts(xml, { maxDuration = 61, guessShortsIfNoDuration = true
     const mg = e['media:group'] || {};
     const thumb = (Array.isArray(mg['media:thumbnail']) ? mg['media:thumbnail'][0] : mg['media:thumbnail'])?.['@_url'] || null;
 
-    // durasi 1) yt:duration@seconds
     let durationSeconds = mg['yt:duration']?.['@_seconds'] != null ? Number(mg['yt:duration']['@_seconds']) : null;
-    // durasi 2) media:content@duration
     if (durationSeconds == null) {
       const mc = Array.isArray(mg['media:content']) ? mg['media:content'][0] : mg['media:content'];
       const alt = mc?.['@_duration'] != null ? Number(mc['@_duration']) : null;
@@ -297,7 +511,6 @@ function ytExtractShorts(xml, { maxDuration = 61, guessShortsIfNoDuration = true
   };
 }
 
-
 // ====== NEWS ======
 const newsCategories = [
   'economic-news/economy',
@@ -320,12 +533,65 @@ async function fetchNewsDetailSafe(url, lang = 'en') {
     const $ = cheerio.load(data);
     if (isWafOrChallenge($)) {
       console.warn(`🛡️ WAF/Challenge terdeteksi saat ambil detail: ${url}`);
-      return { text: '' };
+      return { text: '', author: null, sourceName: null };
     }
-    const articleDiv = $('div.article-content').clone();
-    articleDiv.find('span, h3').remove();
-    const plainText = articleDiv.text().trim();
-    return { text: plainText };
+
+    const $root = $('div.article-content').first();
+    const $article = $root.clone();
+
+    // 1) Coba cari paragraf "Source:" / "Sumber:"
+    let author = null;
+    let sourceName = null;
+
+    // 1) Cari paragraf "Source:" / "Sumber:" dulu
+    const $sourceP = $article.find('p').filter((_, el) =>
+      /\b(?:source|sumber)\b\s*:/i.test($(el).text())
+    ).first();
+
+    if ($sourceP.length) {
+      const pHtml = $sourceP.html() || '';
+      author = extractAuthorFromHtml(pHtml) || author;
+      sourceName = extractSourceNameFromHtml(pHtml) || sourceName;
+      $sourceP.remove();
+    }
+
+    // 2) Sapu bersih paragraf lain: ambil (xxx) PERTAMA yang valid
+    if (!author) {
+      $article.find('p').each((_, p) => {
+        if (author) return;
+        const a = extractAuthorFromHtml($(p).html() || '');
+        if (a) author = a;
+      });
+    }
+
+    // 3) Meta author (kalau ada & valid)
+    if (!author) {
+      const metaAuthor = $('meta[name="author"]').attr('content');
+      const a = sanitizeAuthor(metaAuthor);
+      if (a) author = a;
+    }
+
+
+    // Bersihkan elemen tak relevan & trailing (xxx)
+    $article.find('p').each((_, p) => {
+      const html = $(p).html() || '';
+      const cleaned = html
+        // hapus penanda inisial di akhir paragraf
+        .replace(/\s*\([a-z]{2,8}\)\s*$/i, '')
+        // juga jika ada di tengah kalimat tapi berdiri sendiri (opsional)
+        .replace(/\s*\([a-z]{2,8}\)\s*(?=[\.\,\;\:])/gi, '');
+      if (cleaned !== html) $(p).html(cleaned);
+    });
+
+    // ✅ Ambil semua paragraf, kasih \n\n supaya layout tetap ada
+    const paragraphs = [];
+    $article.find('p').each((_, p) => {
+      const txt = normalizeSpace($(p).text());
+      if (txt) paragraphs.push(txt);
+    });
+    const plainText = paragraphs.join("\n\n"); // <-- ini bikin paragraf tetap ada
+
+    return { text: plainText, author, sourceName };
   }, 3, 1000);
 }
 
@@ -392,17 +658,35 @@ async function scrapeNewsByLang(lang = 'en') {
           if (emptyStreak >= 3) break;
         } else {
           emptyStreak = 0;
+
           const detailTasks = fresh.map((it) => async () => {
             const detail = await fetchNewsDetailSafe(it.link, lang);
-            return { ...it, detail: detail?.text || '' };
-          });
-          let detailed = (await runParallelWithLimit(detailTasks, 4)).filter(Boolean);
 
-          // filter bahasa meleset saat scraping id
+            const sourceName = detail?.sourceName || 'Newsmaker23';
+let author = detail?.author
+  || extractAuthorFromText(it.summary || '')
+  || it.author
+  || null;
+
+author = normalizeAuthorInitial(author); // ← pakai normalizer baru
+            if (author) console.log(`✍️ author (${author}) -> ${it.link}`);
+            if (detail?.sourceName) console.log(`🔗 source "${detail.sourceName}" -> ${it.link}`);
+
+            return {
+              ...it,
+              detail: detail?.text || '',
+              author,
+              author_name: toAuthorName(author), // ✅ tambahkan ini
+              sourceName,
+              publishedAt: it.publishedAt || null,
+              language: lang,
+            };
+          });
+
+          let detailed = (await runParallelWithLimit(detailTasks, 4)).filter(Boolean);
           if (lang === 'id') {
             detailed = detailed.filter((n) => looksIndonesian(n.detail || n.summary || n.title));
           }
-
           allNewItems.push(...detailed);
         }
 
@@ -419,21 +703,34 @@ async function scrapeNewsByLang(lang = 'en') {
   }
 
   if (allNewItems.length > 0) {
-    await News.bulkCreate(
-      allNewItems.map((n) => ({
-        title: n.title,
-        link: n.link,
-        image: n.image,
-        category: n.category,
-        date: n.date,
-        summary: n.summary,
-        detail: n.detail || '',
-        language: lang,
-      })),
-      { ignoreDuplicates: true }
-    );
-    console.log(`✅ Saved ${allNewItems.length} items [${lang}]`);
+    const rows = allNewItems.map(buildNewsRow);
+
+    // 🔁 Penting: upsert agar row lama (author null) ikut ter-update
+ // --- batched bulkCreate + hard cap detail size ---
+const UPDATE_COLS = [
+  'summary','detail','author','author_name','source_name','source_url',
+  'published_at','image','category','date','language','title',
+  'createdAt','updatedAt' // ← tambah ini
+];
+
+
+ const MAX_DETAIL_CHARS = 500_000; // ~0.5 MB per row, silakan sesuaikan
+ const BATCH_SIZE = 150;            // 100–200 aman
+
+ // trimming dulu biar payload lebih ringan
+ const trimmed = rows.map(r => ({
+   ...r,
+   detail: (r.detail || '').slice(0, MAX_DETAIL_CHARS),
+ }));
+
+ for (let i = 0; i < trimmed.length; i += BATCH_SIZE) {
+   const chunk = trimmed.slice(i, i + BATCH_SIZE);
+   await News.bulkCreate(chunk, {
+     updateOnDuplicate: UPDATE_COLS,
+     logging: false,
+   });
   }
+     }
 }
 
 // Wrapper untuk dipakai scheduler/endpoint
@@ -528,38 +825,6 @@ async function scrapeCalendar() {
     console.error('❌ Calendar scraping failed:', err.message);
   }
 }
-
-// ===== Live Quotes =====
-// async function scrapeQuotes() {
-//   console.log('Scraping quotes from JSON endpoint...');
-//   const url =
-//     'https://www.newsmaker.id/quotes/live?s=LGD+LSI+GHSIQ5+LCOPV5+SN1U5+DJIA+DAX+DX+AUDUSD+EURUSD+GBPUSD+CHF+JPY+RP';
-//   try {
-//     const { data } = await axios.get(url);
-//     const quotes = [];
-//     for (let i = 1; i <= data[0].count; i++) {
-//       let high = data[i].high !== 0 ? data[i].high : data[i].last;
-//       let low = data[i].low !== 0 ? data[i].low : data[i].last;
-//       let open = data[i].open !== 0 ? data[i].open : data[i].last;
-
-//       quotes.push({
-//         symbol: data[i].symbol,
-//         last: data[i].last,
-//         high,
-//         low,
-//         open,
-//         prevClose: data[i].prevClose,
-//         valueChange: data[i].valueChange,
-//         percentChange: data[i].percentChange,
-//       });
-//     }
-//     cachedQuotes = quotes;
-//     lastUpdatedQuotes = new Date();
-//     console.log(`✅ Quotes updated (${quotes.length} items)`);
-//   } catch (err) {
-//     console.error('❌ Quotes scraping failed:', err.message);
-//   }
-// }
 
 // ===== Historical =====
 const BASE_URL = 'https://newsmaker.id/index.php/en/historical-data-2';
@@ -792,19 +1057,86 @@ async function scrapeAllHistoricalData() {
   return true;
 }
 
+// === Fallback author EN -> ambil dari artikel ID yang sama ===
+async function fillAuthorFromIDIfMissing(data) {
+  // data bisa berupa instance Sequelize atau plain object
+  const row = data.toJSON ? data.toJSON() : { ...data };
+
+  // hanya kalau EN dan masih kosong
+  if ((row.language || '').toLowerCase() !== 'en') return row;
+  if (row.author || row.author_name) return row;
+
+  const { Op } = require('sequelize');
+
+  // 1) coba pasangannya via link (/en/ -> /id/)
+  let altLink = null;
+  if (row.link) {
+    altLink = row.link
+      .replace('/index.php/en/', '/index.php/id/')
+      .replace('/en/', '/id/');
+  }
+
+  let match = null;
+
+  if (altLink) {
+    match = await News.findOne({
+      where: { language: 'id', link: altLink },
+      attributes: ['author', 'author_name'],
+      order: [['published_at', 'DESC']],
+      logging: false,
+    });
+  }
+
+  // 2) kalau belum ketemu, coba cocokkan via image (sering sama)
+  if (!match && row.image) {
+    match = await News.findOne({
+      where: { language: 'id', image: row.image },
+      attributes: ['author', 'author_name'],
+      order: [['published_at', 'DESC']],
+      logging: false,
+    });
+  }
+
+  // 3) terakhir, jendela waktu ±6 jam + kategori & (opsional) sumber
+  if (!match && row.published_at) {
+    const t = new Date(row.published_at);
+    const t1 = new Date(t.getTime() - 6 * 60 * 60 * 1000);
+    const t2 = new Date(t.getTime() + 6 * 60 * 60 * 1000);
+
+    const where = {
+      language: 'id',
+      published_at: { [Op.between]: [t1, t2] },
+    };
+    if (row.category) where.category = row.category;
+    if (row.source_name) where.source_name = row.source_name;
+
+    match = await News.findOne({
+      where,
+      attributes: ['author', 'author_name'],
+      order: [['published_at', 'DESC']],
+      logging: false,
+    });
+  }
+
+  if (match) {
+    const m = match.toJSON ? match.toJSON() : match;
+    row.author = row.author || m.author || null;
+    row.author_name = row.author_name || m.author_name || toAuthorName(m.author) || null;
+  }
+
+  return row;
+}
+
 // ===== Schedulers (pakai lock) =====
 withLock('lock:scrapeNews:en', 300, () => scrapeNewsByLang('en'));
 withLock('lock:scrapeNews:id', 300, () => scrapeNewsByLang('id'));
-scrapeCalendar();
-// scrapeQuotes();
-withLock('lock:hist:all', 3600, () => scrapeAllHistoricalData());
+// scrapeCalendar();
+// withLock('lock:hist:all', 3600, () => scrapeAllHistoricalData());
 
-// // Note: 60*60*1000 = 1 jam
-setInterval(() => withLock('lock:hist:all', 3600, () => scrapeAllHistoricalData()), 4 * 60 * 60 * 1000); // tiap 4 jam
+// setInterval(() => withLock('lock:hist:all', 3600, () => scrapeAllHistoricalData()), 4 * 60 * 60 * 1000); // tiap 4 jam
 setInterval(() => withLock('lock:scrapeNews:en', 300, () => scrapeNewsByLang('en')), 10 * 60 * 1000); // 10 menit
 setInterval(() => withLock('lock:scrapeNews:id', 300, () => scrapeNewsByLang('id')), 10 * 60 * 1000); // 10 menit
 setInterval(scrapeCalendar, 60 * 60 * 1000); // 1 jam
-// setInterval(scrapeQuotes, 0.15 * 60 * 1000); // 9 detik
 
 // ===== API =====
 // ===== NEWS (EN) - paginated, fields, Redis cache, ETag =====
@@ -821,9 +1153,9 @@ app.get('/api/news', async (req, res) => {
     if (category !== 'all') where.category = { [Op.like]: `%${category}%` };
     if (search) {
       where[Op.or] = [
-        { title:   { [Op.like]: `%${search}%` } },
+        { title: { [Op.like]: `%${search}%` } },
         { summary: { [Op.like]: `%${search}%` } },
-        { detail:  { [Op.like]: `%${search}%` } },
+        { detail: { [Op.like]: `%${search}%` } },
       ];
     }
 
@@ -833,16 +1165,27 @@ app.get('/api/news', async (req, res) => {
     const cached = await redis.get(cacheKey);
     if (cached) return sendWithETag(req, res, JSON.parse(cached), 30);
 
-    const { rows, count } = await News.findAndCountAll({
-      where,
-      attributes: attrs || undefined,
-      order: [['createdAt', 'DESC']],
-      limit: l,
-      offset: (p - 1) * l,
-    });
+    // pastikan author_name ada di payload
+const { rows, count } = await News.findAndCountAll({
+  where,
+  attributes: attrs || undefined,
+  order: [
+    ['published_at', 'DESC'],
+    ['createdAt', 'DESC'],
+  ],
+  limit: l,
+  offset: (p - 1) * l,
+});
 
-    const payload = { status: 'success', page: p, perPage: l, total: count, data: rows };
-    await redis.set(cacheKey, JSON.stringify(payload), 'EX', 45); // TTL 45 detik
+const data = rows.map(r => {
+  const row = r.toJSON ? r.toJSON() : r;
+  if (!row.author_name) row.author_name = toAuthorName(row.author) || null; // ← cek null/empty, bukan "in"
+  return row;
+});
+
+
+const payload = { status: 'success', page: p, perPage: l, total: count, data };
+    await redis.set(cacheKey, JSON.stringify(payload), 'EX', 45);
 
     return sendWithETag(req, res, payload, 30);
   } catch (err) {
@@ -850,7 +1193,6 @@ app.get('/api/news', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-
 
 // ===== NEWS (ID) - paginated, fields, Redis cache, ETag =====
 app.get('/api/news-id', async (req, res) => {
@@ -866,9 +1208,9 @@ app.get('/api/news-id', async (req, res) => {
     if (category !== 'all') where.category = { [Op.like]: `%${category}%` };
     if (search) {
       where[Op.or] = [
-        { title:   { [Op.like]: `%${search}%` } },
+        { title: { [Op.like]: `%${search}%` } },
         { summary: { [Op.like]: `%${search}%` } },
-        { detail:  { [Op.like]: `%${search}%` } },
+        { detail: { [Op.like]: `%${search}%` } },
       ];
     }
 
@@ -881,12 +1223,24 @@ app.get('/api/news-id', async (req, res) => {
     const { rows, count } = await News.findAndCountAll({
       where,
       attributes: attrs || undefined,
-      order: [['createdAt', 'DESC']],
+      order: [
+        ['published_at', 'DESC'],
+        ['createdAt', 'DESC'],
+      ],
       limit: l,
       offset: (p - 1) * l,
     });
 
-    const payload = { status: 'success', page: p, perPage: l, total: count, data: rows };
+const data = rows.map(r => {
+  const row = r.toJSON ? r.toJSON() : r;
+  if (!row.author_name) row.author_name = toAuthorName(row.author) || null; // ← cek null/empty, bukan "in"
+  return row;
+});
+
+
+
+
+const payload = { status: 'success', page: p, perPage: l, total: count, data };
     await redis.set(cacheKey, JSON.stringify(payload), 'EX', 45);
 
     return sendWithETag(req, res, payload, 30);
@@ -896,7 +1250,7 @@ app.get('/api/news-id', async (req, res) => {
   }
 });
 
-// ===== NEWS DETAIL by ID (ambil summary/detail saat dibuka) =====
+// ===== NEWS DETAIL by ID =====
 app.get('/api/news/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -909,8 +1263,15 @@ app.get('/api/news/:id', async (req, res) => {
     const row = await News.findByPk(id);
     if (!row) return res.status(404).json({ error: 'Not found' });
 
-    const payload = { status: 'success', data: row };
-    await redis.set(cacheKey, JSON.stringify(payload), 'EX', 120); // 2 menit
+    // pastikan author_name minimal fallback dari inisial
+    let data = row.toJSON ? row.toJSON() : row;
+    if (!data.author_name) data.author_name = toAuthorName(data.author) || null;
+
+    // 👇 kalau EN dan masih kosong → ambil dari versi ID
+    data = await fillAuthorFromIDIfMissing(data);
+
+    const payload = { status: 'success', data };
+    await redis.set(cacheKey, JSON.stringify(payload), 'EX', 120);
 
     return sendWithETag(req, res, payload, 120);
   } catch (err) {
@@ -918,6 +1279,7 @@ app.get('/api/news/:id', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 
 app.get('/api/news-id/:id', async (req, res) => {
   try {
@@ -931,18 +1293,22 @@ app.get('/api/news-id/:id', async (req, res) => {
     const row = await News.findByPk(id);
     if (!row) return res.status(404).json({ error: 'Not found' });
 
-    const payload = { status: 'success', data: row };
-    await redis.set(cacheKey, JSON.stringify(payload), 'EX', 120); // 2 menit
+    // 👇 sama: fallback author_name
+    const data = row.toJSON ? row.toJSON() : row;
+    if (!data.author_name) data.author_name = toAuthorName(data.author) || null;
+
+    const payload = { status: 'success', data };
+    await redis.set(cacheKey, JSON.stringify(payload), 'EX', 120);
 
     return sendWithETag(req, res, payload, 120);
   } catch (err) {
-    console.error('❌ /api/news/:id error:', err.message);
+    console.error('❌ /api/news-id/:id error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 
-
+// ===== Calendar API =====
 app.get('/api/calendar', async (req, res) => {
   try {
     const cached = await redis.get('calendar:all');
@@ -973,7 +1339,6 @@ app.get('/api/historical', async (req, res) => {
     const { QueryTypes } = require('sequelize');
     const tableName = HistoricalData.getTableName().toString();
 
-    // ✅ FIX: pakai subquery agar bebas ORDER BY alias agregat
     const orderedSymbols = await sequelize.query(
       `
       SELECT symbol, latestDate, updatedAtMax
@@ -997,7 +1362,6 @@ app.get('/api/historical', async (req, res) => {
       });
     }
 
-    // Ambil data per symbol, urutkan: yang tanggalnya valid dulu, baru by date desc, lalu updatedAt
     const allData = [];
     for (const row of orderedSymbols) {
       const symbol = row.symbol;
@@ -1030,14 +1394,12 @@ app.get('/api/historical', async (req, res) => {
   }
 });
 
-
 // ===== REFACTORED: QUOTES NO-CACHE =====
 app.get('/api/quotes', async (req, res) => {
   try {
     const url =
       'https://www.newsmaker.id/quotes/live?s=LGD+LSI+GHSIU5+LCOPX5+SN1U5+DJIA+DAX+DX+AUDUSD+EURUSD+GBPUSD+CHF+JPY+RP';
 
-    // Always fetch fresh from source (no cache usage)
     const { data } = await axios.get(url, { timeout: 15000 });
 
     const quotes = [];
@@ -1063,12 +1425,11 @@ app.get('/api/quotes', async (req, res) => {
       updatedAt: new Date(),
       total: quotes.length,
       data: quotes,
-      source: 'live', // penanda live fetch
+      source: 'live',
     });
   } catch (err) {
     console.error('❌ Live quotes fetch failed:', err.message);
 
-    // --- OPSIONAL: Fallback ke cache RAM kalau ada (boleh dihapus kalau mau pure no-cache) ---
     if (Array.isArray(cachedQuotes) && cachedQuotes.length > 0) {
       const validQuotes = cachedQuotes.map((q) => ({
         ...q,
@@ -1084,7 +1445,6 @@ app.get('/api/quotes', async (req, res) => {
         source: 'fallback-cache',
       });
     }
-    // -----------------------------------------------------------------------------------------
 
     return res.status(502).json({
       status: 'error',
@@ -1094,6 +1454,7 @@ app.get('/api/quotes', async (req, res) => {
   }
 });
 
+// ===== Shorts =====
 app.get('/api/shorts', async (req, res) => {
   try {
     let { handle, channelId, user, playlistId } = req.query;
