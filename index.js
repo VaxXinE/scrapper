@@ -16,10 +16,31 @@ const { XMLParser } = require('fast-xml-parser');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+/* ------------------------------ hardening ------------------------------ */
+app.set('trust proxy', true); // aman di Railway/Proxy apa pun
 app.use(helmet());
+app.use(cors());
 app.use(compression());
-app.use(rateLimit({ windowMs: 60_000, max: 120 })); // 120 req/menit/IP
+
+// rate limit (express-rate-limit v7)
+const limiter = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,           // hormati trust proxy
+  validate: { xForwardedForHeader: false } // cegah error ERL di env tertentu
+});
+app.use(limiter);
+
+// global safety nets
+process.on('unhandledRejection', (reason) => {
+  console.error('🧯 Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('🧯 Uncaught Exception:', err);
+});
+
 
 // ===== In-memory caches =====
 let cachedNews = [];
@@ -127,11 +148,20 @@ function parsePublishedAt(dateStr = '', lang = 'en') {
 
 
 
+function ensureDate(d) {
+  // Terima Date atau string yang bisa di-parse; fallback ke now
+  const x = d instanceof Date ? d : new Date(d);
+  return Number.isNaN(+x) ? new Date() : x;
+}
+
 function buildNewsRow(n) {
-  const pub =
+  // coba: dari n.publishedAt (Date), lalu parse dari n.date, lalu NOW
+  let pub =
     (n.publishedAt instanceof Date && !Number.isNaN(+n.publishedAt))
       ? n.publishedAt
-      : parsePublishedAt(n.date, n.language || 'en'); // ← parse dari kolom "date"
+      : parsePublishedAt(n.date, n.language || 'en');
+
+  pub = ensureDate(pub);
 
   const row = {
     title: n.title,
@@ -148,15 +178,13 @@ function buildNewsRow(n) {
     author:      n.author || null,
     author_name: n.author_name || toAuthorName(n.author),
 
-    // 🔴 TIGA KOLOM YANG KAMU MAU SAMA DENGAN "date"
-    published_at: pub || null,
-    createdAt:    pub || null,
-    updatedAt:    pub || null,
+    published_at: pub,
+    createdAt:    pub,   // minta 3 kolom sama seperti keinginanmu
+    updatedAt:    pub,
   };
 
   return row;
 }
-
 
 
 
@@ -718,18 +746,42 @@ const UPDATE_COLS = [
  const BATCH_SIZE = 150;            // 100–200 aman
 
  // trimming dulu biar payload lebih ringan
- const trimmed = rows.map(r => ({
-   ...r,
-   detail: (r.detail || '').slice(0, MAX_DETAIL_CHARS),
- }));
+const safeRows = trimmed.map(r => ({
+  ...r,
+  published_at: ensureDate(r.published_at), // 🔑 pastikan tidak null
+  createdAt:    ensureDate(r.createdAt),    // 🔑 fallback ke NOW kalau invalid
+  updatedAt:    ensureDate(r.updatedAt),    // 🔑 fallback ke NOW kalau invalid
+}));
 
- for (let i = 0; i < trimmed.length; i += BATCH_SIZE) {
-   const chunk = trimmed.slice(i, i + BATCH_SIZE);
-   await News.bulkCreate(chunk, {
-     updateOnDuplicate: UPDATE_COLS,
-     logging: false,
-   });
+for (let i = 0; i < safeRows.length; i += BATCH_SIZE) {
+  const chunk = safeRows.slice(i, i + BATCH_SIZE);
+  try {
+    await News.bulkCreate(chunk, {
+      updateOnDuplicate: UPDATE_COLS,
+      logging: false,
+    });
+  } catch (e) {
+    console.error('❌ bulkCreate failed, fallback per-row:', e.message);
+
+    // Kalau batch gagal, coba insert satu-satu biar tau row mana yang rusak
+    for (const r of chunk) {
+      try {
+        await News.bulkCreate([r], {
+          updateOnDuplicate: UPDATE_COLS,
+          logging: false,
+        });
+      } catch (er) {
+        console.error('   ↳ Row failed:', {
+          link: r.link,
+          title: r.title?.slice(0, 120),
+          published_at: r.published_at,
+          reason: er.message,
+        });
+      }
+    }
   }
+}
+
      }
 }
 
@@ -1130,8 +1182,8 @@ async function fillAuthorFromIDIfMissing(data) {
 // ===== Schedulers (pakai lock) =====
 withLock('lock:scrapeNews:en', 300, () => scrapeNewsByLang('en'));
 withLock('lock:scrapeNews:id', 300, () => scrapeNewsByLang('id'));
-// scrapeCalendar();
-// withLock('lock:hist:all', 3600, () => scrapeAllHistoricalData());
+scrapeCalendar();
+withLock('lock:hist:all', 3600, () => scrapeAllHistoricalData());
 
 // setInterval(() => withLock('lock:hist:all', 3600, () => scrapeAllHistoricalData()), 4 * 60 * 60 * 1000); // tiap 4 jam
 setInterval(() => withLock('lock:scrapeNews:en', 300, () => scrapeNewsByLang('en')), 10 * 60 * 1000); // 10 menit
@@ -1149,13 +1201,20 @@ app.get('/api/news', async (req, res) => {
     const attrs = normalizeFields(fields);
 
     const { Op } = require('sequelize');
-    const where = { language: 'en' };
+
+    // ⬇️ cutoff 3 bulan ke belakang
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - 3);
+
+    // ⬇️ filter language + published_at >= cutoff
+    const where = { language: 'en', published_at: { [Op.gte]: cutoff } };
+
     if (category !== 'all') where.category = { [Op.like]: `%${category}%` };
     if (search) {
       where[Op.or] = [
-        { title: { [Op.like]: `%${search}%` } },
+        { title:   { [Op.like]: `%${search}%` } },
         { summary: { [Op.like]: `%${search}%` } },
-        { detail: { [Op.like]: `%${search}%` } },
+        { detail:  { [Op.like]: `%${search}%` } },
       ];
     }
 
@@ -1165,34 +1224,32 @@ app.get('/api/news', async (req, res) => {
     const cached = await redis.get(cacheKey);
     if (cached) return sendWithETag(req, res, JSON.parse(cached), 30);
 
-    // pastikan author_name ada di payload
-const { rows, count } = await News.findAndCountAll({
-  where,
-  attributes: attrs || undefined,
-  order: [
-    ['published_at', 'DESC'],
-    ['createdAt', 'DESC'],
-  ],
-  limit: l,
-  offset: (p - 1) * l,
-});
+    const { rows, count } = await News.findAndCountAll({
+      where,
+      attributes: attrs || undefined,
+      order: [
+        ['published_at', 'DESC'],
+        ['createdAt', 'DESC'],
+      ],
+      limit: l,
+      offset: (p - 1) * l,
+    });
 
-const data = rows.map(r => {
-  const row = r.toJSON ? r.toJSON() : r;
-  if (!row.author_name) row.author_name = toAuthorName(row.author) || null; // ← cek null/empty, bukan "in"
-  return row;
-});
+    const data = rows.map(r => {
+      const row = r.toJSON ? r.toJSON() : r;
+      if (!row.author_name) row.author_name = toAuthorName(row.author) || null;
+      return row;
+    });
 
-
-const payload = { status: 'success', page: p, perPage: l, total: count, data };
+    const payload = { status: 'success', page: p, perPage: l, total: count, data };
     await redis.set(cacheKey, JSON.stringify(payload), 'EX', 45);
-
     return sendWithETag(req, res, payload, 30);
   } catch (err) {
     console.error('❌ /api/news error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 
 // ===== NEWS (ID) - paginated, fields, Redis cache, ETag =====
 app.get('/api/news-id', async (req, res) => {
@@ -1204,13 +1261,20 @@ app.get('/api/news-id', async (req, res) => {
     const attrs = normalizeFields(fields);
 
     const { Op } = require('sequelize');
-    const where = { language: 'id' };
+
+    // ⬇️ cutoff 3 bulan ke belakang
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - 3);
+
+    // ⬇️ filter language + published_at >= cutoff
+    const where = { language: 'id', published_at: { [Op.gte]: cutoff } };
+
     if (category !== 'all') where.category = { [Op.like]: `%${category}%` };
     if (search) {
       where[Op.or] = [
-        { title: { [Op.like]: `%${search}%` } },
+        { title:   { [Op.like]: `%${search}%` } },
         { summary: { [Op.like]: `%${search}%` } },
-        { detail: { [Op.like]: `%${search}%` } },
+        { detail:  { [Op.like]: `%${search}%` } },
       ];
     }
 
@@ -1231,24 +1295,21 @@ app.get('/api/news-id', async (req, res) => {
       offset: (p - 1) * l,
     });
 
-const data = rows.map(r => {
-  const row = r.toJSON ? r.toJSON() : r;
-  if (!row.author_name) row.author_name = toAuthorName(row.author) || null; // ← cek null/empty, bukan "in"
-  return row;
-});
+    const data = rows.map(r => {
+      const row = r.toJSON ? r.toJSON() : r;
+      if (!row.author_name) row.author_name = toAuthorName(row.author) || null;
+      return row;
+    });
 
-
-
-
-const payload = { status: 'success', page: p, perPage: l, total: count, data };
+    const payload = { status: 'success', page: p, perPage: l, total: count, data };
     await redis.set(cacheKey, JSON.stringify(payload), 'EX', 45);
-
     return sendWithETag(req, res, payload, 30);
   } catch (err) {
     console.error('❌ /api/news-id error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 
 // ===== NEWS DETAIL by ID =====
 app.get('/api/news/:id', async (req, res) => {
